@@ -131,17 +131,46 @@ async function handleSend() {
   await nextTick()
   scrollToBottom()
 
+  // Add a placeholder for the streaming assistant message
+  const assistantMsg = { role: 'assistant', content: '' }
+  messages.value.push(assistantMsg)
+
   try {
-    const history = messages.value.slice(-MAX_HISTORY - 1, -1)
-    const data = await api.chat(text, history)
-    messages.value.push({ role: 'assistant', content: data.reply })
+    const history = messages.value.slice(-MAX_HISTORY - 2, -2) // exclude user + placeholder
+    await api.chatStream(
+      text,
+      history,
+      // onDelta: append each chunk
+      (chunk) => {
+        assistantMsg.content += chunk
+        nextTick(() => scrollToBottom())
+      },
+      // onError
+      (err) => {
+        // Remove empty assistant message on error
+        const idx = messages.value.indexOf(assistantMsg)
+        if (idx !== -1 && !assistantMsg.content) {
+          messages.value.splice(idx, 1)
+        }
+        error.value = err.message || 'AI 回复失败，请稍后重试'
+        isRetryable.value = true
+        loading.value = false
+      },
+      // onDone
+      () => {
+        loading.value = false
+        nextTick(() => scrollToBottom())
+      }
+    )
   } catch (e) {
+    // Remove empty assistant message
+    const idx = messages.value.indexOf(assistantMsg)
+    if (idx !== -1 && !assistantMsg.content) {
+      messages.value.splice(idx, 1)
+    }
     error.value = e.message || 'AI 回复失败，请稍后重试'
     isRetryable.value = true
-  } finally {
     loading.value = false
-    await nextTick()
-    scrollToBottom()
   }
 }
 
@@ -151,8 +180,12 @@ function sendMessage(text) {
 }
 
 function retry() {
-  if (messages.value.length > 0 && messages.value[messages.value.length - 1].role === 'user') {
-    const lastUserMsg = messages.value.pop()
+  // Remove everything from the last user message onward (including partial streaming response)
+  const lastUserIdx = [...messages.value].reverse().findIndex(m => m.role === 'user')
+  if (lastUserIdx !== -1) {
+    const realIdx = messages.value.length - 1 - lastUserIdx
+    const lastUserMsg = messages.value[realIdx]
+    messages.value.splice(realIdx)
     input.value = lastUserMsg.content
   }
   error.value = ''

@@ -6,7 +6,7 @@ const router = express.Router();
 // POST /api/chat — public endpoint, no auth required
 router.post('/', async (req, res) => {
   const db = getDb();
-  const { message, history } = req.body;
+  const { message, history, stream } = req.body;
 
   if (!message || !message.trim()) {
     return res.status(400).json({ error: '请输入消息' });
@@ -66,75 +66,209 @@ router.post('/', async (req, res) => {
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
 
-    let response;
-    if (isDeepSeek) {
-      // DeepSeek uses OpenAI-compatible API
-      response = await fetch('https://api.deepseek.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: 4096,
-          messages: [
-            { role: 'system', content: fullSystemPrompt },
-            ...messages
-          ]
-        }),
-        signal: controller.signal
+    if (stream) {
+      // === SSE streaming mode ===
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no'
       });
-    } else {
-      // Anthropic API
-      response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: 4096,
-          system: fullSystemPrompt,
-          messages
-        }),
-        signal: controller.signal
-      });
-    }
 
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      const errBody = await response.text().catch(() => '');
-      let errMsg;
-      try {
-        const parsed = JSON.parse(errBody);
-        errMsg = parsed.error?.message || `API 返回错误 (${response.status})`;
-      } catch {
-        errMsg = `API 返回错误 (${response.status})`;
+      let response;
+      if (isDeepSeek) {
+        response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model,
+            max_tokens: 4096,
+            stream: true,
+            messages: [
+              { role: 'system', content: fullSystemPrompt },
+              ...messages
+            ]
+          }),
+          signal: controller.signal
+        });
+      } else {
+        response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01'
+          },
+          body: JSON.stringify({
+            model,
+            max_tokens: 4096,
+            stream: true,
+            system: fullSystemPrompt,
+            messages
+          }),
+          signal: controller.signal
+        });
       }
-      console.error(`[chat] ${isDeepSeek ? 'DeepSeek' : 'Anthropic'} API error (${response.status}):`, errBody);
-      return res.status(502).json({ error: errMsg });
-    }
 
-    const data = await response.json();
-    let reply;
-    if (isDeepSeek) {
-      reply = data.choices?.[0]?.message?.content || '';
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errBody = await response.text().catch(() => '');
+        let errMsg;
+        try {
+          const parsed = JSON.parse(errBody);
+          errMsg = parsed.error?.message || `API 返回错误 (${response.status})`;
+        } catch {
+          errMsg = `API 返回错误 (${response.status})`;
+        }
+        res.write(`data: ${JSON.stringify({ type: 'error', error: errMsg })}\n\n`);
+        res.end();
+        return;
+      }
+
+      // Parse the stream
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || !trimmed.startsWith('data: ')) continue;
+
+            const jsonStr = trimmed.slice(6);
+
+            // Anthropic: [DONE] or DeepSeek: [DONE]
+            if (jsonStr === '[DONE]') continue;
+
+            try {
+              const parsed = JSON.parse(jsonStr);
+
+              if (isDeepSeek) {
+                const delta = parsed.choices?.[0]?.delta;
+                if (delta?.content) {
+                  res.write(`data: ${JSON.stringify({ type: 'delta', content: delta.content })}\n\n`);
+                }
+              } else {
+                // Anthropic SSE event types
+                if (parsed.type === 'content_block_delta') {
+                  const text = parsed.delta?.text;
+                  if (text) {
+                    res.write(`data: ${JSON.stringify({ type: 'delta', content: text })}\n\n`);
+                  }
+                } else if (parsed.type === 'message_delta') {
+                  const stopReason = parsed.delta?.stop_reason;
+                  if (stopReason) {
+                    res.write(`data: ${JSON.stringify({ type: 'stop', stop_reason: stopReason })}\n\n`);
+                  }
+                }
+              }
+            } catch {
+              // Skip unparseable lines
+            }
+          }
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          res.write(`data: ${JSON.stringify({ type: 'error', error: 'AI 响应超时，请稍后重试' })}\n\n`);
+        } else {
+          res.write(`data: ${JSON.stringify({ type: 'error', error: 'AI 服务暂时不可用，请稍后重试' })}\n\n`);
+        }
+      }
+
+      res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+      res.end();
     } else {
-      reply = data.content?.[0]?.text || '';
-    }
+      // === Non-streaming mode (backward compatible) ===
+      let response;
+      if (isDeepSeek) {
+        response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model,
+            max_tokens: 4096,
+            messages: [
+              { role: 'system', content: fullSystemPrompt },
+              ...messages
+            ]
+          }),
+          signal: controller.signal
+        });
+      } else {
+        response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01'
+          },
+          body: JSON.stringify({
+            model,
+            max_tokens: 4096,
+            system: fullSystemPrompt,
+            messages
+          }),
+          signal: controller.signal
+        });
+      }
 
-    res.json({ reply });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errBody = await response.text().catch(() => '');
+        let errMsg;
+        try {
+          const parsed = JSON.parse(errBody);
+          errMsg = parsed.error?.message || `API 返回错误 (${response.status})`;
+        } catch {
+          errMsg = `API 返回错误 (${response.status})`;
+        }
+        console.error(`[chat] ${isDeepSeek ? 'DeepSeek' : 'Anthropic'} API error (${response.status}):`, errBody);
+        return res.status(502).json({ error: errMsg });
+      }
+
+      const data = await response.json();
+      let reply;
+      if (isDeepSeek) {
+        reply = data.choices?.[0]?.message?.content || '';
+      } else {
+        reply = data.content?.[0]?.text || '';
+      }
+
+      res.json({ reply });
+    }
   } catch (err) {
     if (err.name === 'AbortError') {
+      if (stream) {
+        res.write(`data: ${JSON.stringify({ type: 'error', error: 'AI 响应超时，请稍后重试' })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+        return res.end();
+      }
       return res.status(504).json({ error: 'AI 响应超时，请稍后重试' });
     }
     console.error('[chat] Unexpected error:', err);
+    if (stream) {
+      res.write(`data: ${JSON.stringify({ type: 'error', error: 'AI 服务暂时不可用，请稍后重试' })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+      return res.end();
+    }
     res.status(500).json({ error: 'AI 服务暂时不可用，请稍后重试' });
   }
 });

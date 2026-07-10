@@ -106,11 +106,69 @@ export const api = {
     })
   },
 
-  // Chat
+  // Chat (non-streaming, backward compatible)
   chat(message, history = []) {
     return request('/chat', {
       method: 'POST',
       body: JSON.stringify({ message, history })
     })
+  },
+
+  // Chat with SSE streaming
+  async chatStream(message, history, onDelta, onError, onDone) {
+    const token = localStorage.getItem('token')
+    const headers = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+
+    const response = await fetch(`${API_BASE}/chat`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ message, history, stream: true })
+    })
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: '请求失败' }))
+      throw new Error(err.error || '请求失败')
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (!trimmed || !trimmed.startsWith('data: ')) continue
+
+          const jsonStr = trimmed.slice(6)
+          try {
+            const event = JSON.parse(jsonStr)
+            if (event.type === 'delta') {
+              onDelta(event.content)
+            } else if (event.type === 'error') {
+              onError(new Error(event.error))
+              return
+            } else if (event.type === 'done') {
+              onDone()
+              return
+            }
+          } catch {
+            // Skip unparseable events
+          }
+        }
+      }
+    } catch (e) {
+      onError(e)
+    } finally {
+      reader.releaseLock()
+    }
   }
 }
