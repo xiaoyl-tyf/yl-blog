@@ -169,7 +169,6 @@ router.post('/', async (req, res) => {
                 if (delta?.content) {
                   // Add 30ms spacing between deltas for visible typing animation on client
                   res.write(`data: ${JSON.stringify({ type: 'delta', content: delta.content })}\n\n`);
-                  await new Promise(r => setTimeout(r, 30));
                 }
               } else {
                 // Anthropic SSE event types

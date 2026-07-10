@@ -153,18 +153,10 @@ async function handleSend() {
     }
 
     const reader = response.body.getReader()
+    // Use a single continuous await loop — assign to assistantMsg.content on each delta
+    // with an await new Promise(setTimeout) to throttle the visible typing speed
     const decoder = new TextDecoder()
     let buf = ''
-    // Buffer: accumulate character chunks, then animate them via setInterval
-    const charQueue = []
-    const tickMs = 40 // ~25 chars/second
-
-    const intervalId = setInterval(() => {
-      if (charQueue.length === 0) return
-      const batch = charQueue.splice(0, 2).join('') // 2 chars per tick
-      assistantMsg.content += batch
-      scrollToBottom()
-    }, tickMs)
 
     while (true) {
       const { done, value } = await reader.read()
@@ -180,7 +172,12 @@ async function handleSend() {
         try {
           const e = JSON.parse(s.slice(6))
           if (e.type === 'delta') {
-            charQueue.push(e.content)
+            // Write one character at a time with a short delay for visible typing
+            for (const ch of e.content) {
+              assistantMsg.content += ch
+              scrollToBottom()
+              await new Promise(r => setTimeout(r, 30))
+            }
           } else if (e.type === 'error') {
             throw new Error(e.error)
           }
@@ -189,16 +186,6 @@ async function handleSend() {
         }
       }
     }
-
-    // Drain the animation queue
-    while (charQueue.length > 0) {
-      await new Promise(r => setTimeout(r, tickMs))
-    }
-    clearInterval(intervalId)
-
-    // Render through marked for final formatting
-    const finalContent = assistantMsg.content
-    assistantMsg.content = marked(finalContent, { breaks: true })
 
     loading.value = false
     await nextTick()
