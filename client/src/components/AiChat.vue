@@ -152,39 +152,47 @@ async function handleSend() {
       throw new Error(err.error || '请求失败')
     }
 
+    // Read stream into a character buffer
+    const charBuffer = []
     const reader = response.body.getReader()
-    // Use a single continuous await loop — assign to assistantMsg.content on each delta
-    // with an await new Promise(setTimeout) to throttle the visible typing speed
     const decoder = new TextDecoder()
     let buf = ''
+    let streamDone = false
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buf += decoder.decode(value, { stream: true })
-      const lines = buf.split('\n')
-      buf = lines.pop() || ''
-
-      for (const line of lines) {
-        const s = line.trim()
-        if (!s.startsWith('data: ')) continue
-        try {
-          const e = JSON.parse(s.slice(6))
-          if (e.type === 'delta') {
-            // Write one character at a time with a short delay for visible typing
-            for (const ch of e.content) {
-              assistantMsg.content += ch
-              scrollToBottom()
-              await new Promise(r => setTimeout(r, 50))
-            }
-          } else if (e.type === 'error') {
-            throw new Error(e.error)
+    // Background reader: push characters into buffer
+    ;(async () => {
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) { streamDone = true; return }
+          buf += decoder.decode(value, { stream: true })
+          const lines = buf.split('\n')
+          buf = lines.pop() || ''
+          for (const line of lines) {
+            const s = line.trim()
+            if (!s.startsWith('data: ')) continue
+            try {
+              const e = JSON.parse(s.slice(6))
+              if (e.type === 'delta') {
+                for (const ch of e.content) charBuffer.push(ch)
+              } else if (e.type === 'error') {
+                throw new Error(e.error)
+              }
+            } catch (ex) { if (!(ex instanceof SyntaxError)) throw ex }
           }
-        } catch (ex) {
-          if (!(ex instanceof SyntaxError)) throw ex
         }
+      } catch (ex) {
+        streamDone = true
       }
+    })()
+
+    // Animation loop: consume buffer at 50ms/char
+    while (!streamDone || charBuffer.length > 0) {
+      if (charBuffer.length > 0) {
+        assistantMsg.content += charBuffer.shift()
+        scrollToBottom()
+      }
+      await new Promise(r => setTimeout(r, 50))
     }
 
     loading.value = false
