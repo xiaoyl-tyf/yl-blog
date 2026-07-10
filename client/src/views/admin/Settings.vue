@@ -58,10 +58,10 @@
       </div>
 
       <div class="form-group">
-        <label class="form-label">Anthropic API Key</label>
-        <input v-model="aiApiKey" type="password" class="form-input" placeholder="sk-ant-..." />
+        <label class="form-label">API Key</label>
+        <input v-model="aiApiKey" type="password" class="form-input" placeholder="sk-ant-... 或 sk-..." />
         <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 4px;">
-          API Key 仅在服务端使用，不会暴露给前端。
+          支持 Anthropic API Key 和 DeepSeek API Key。API Key 仅在服务端使用，不会暴露给前端。
         </p>
       </div>
 
@@ -71,6 +71,7 @@
           <option value="claude-opus-4-8">Claude Opus 4.8（推荐）</option>
           <option value="claude-sonnet-5">Claude Sonnet 5</option>
           <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
+          <option value="deepseek-chat">DeepSeek Chat</option>
         </select>
       </div>
 

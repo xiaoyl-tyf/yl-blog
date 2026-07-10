@@ -48,6 +48,8 @@ router.post('/', async (req, res) => {
     blogContext = '这个博客目前还没有发布任何文章。';
   }
 
+  const fullSystemPrompt = `${systemPrompt}\n\n${blogContext}`;
+
   // Build messages array
   const messages = [];
   if (Array.isArray(history)) {
@@ -59,26 +61,50 @@ router.post('/', async (req, res) => {
   }
   messages.push({ role: 'user', content: message.trim() });
 
-  // Call Anthropic API
+  // Detect provider from model name
+  const isDeepSeek = model.startsWith('deepseek');
+
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 4096,
-        system: `${systemPrompt}\n\n${blogContext}`,
-        messages
-      }),
-      signal: controller.signal
-    });
+    let response;
+    if (isDeepSeek) {
+      // DeepSeek uses OpenAI-compatible API
+      response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 4096,
+          messages: [
+            { role: 'system', content: fullSystemPrompt },
+            ...messages
+          ]
+        }),
+        signal: controller.signal
+      });
+    } else {
+      // Anthropic API
+      response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 4096,
+          system: fullSystemPrompt,
+          messages
+        }),
+        signal: controller.signal
+      });
+    }
 
     clearTimeout(timeoutId);
 
@@ -87,16 +113,21 @@ router.post('/', async (req, res) => {
       let errMsg;
       try {
         const parsed = JSON.parse(errBody);
-        errMsg = parsed.error?.message || `Anthropic API 返回错误 (${response.status})`;
+        errMsg = parsed.error?.message || `API 返回错误 (${response.status})`;
       } catch {
-        errMsg = `Anthropic API 返回错误 (${response.status})`;
+        errMsg = `API 返回错误 (${response.status})`;
       }
-      console.error('[chat] Anthropic API error:', errBody);
+      console.error('[chat] API error:', errBody);
       return res.status(502).json({ error: errMsg });
     }
 
     const data = await response.json();
-    const reply = data.content?.[0]?.text || '';
+    let reply;
+    if (isDeepSeek) {
+      reply = data.choices?.[0]?.message?.content || '';
+    } else {
+      reply = data.content?.[0]?.text || '';
+    }
 
     res.json({ reply });
   } catch (err) {
