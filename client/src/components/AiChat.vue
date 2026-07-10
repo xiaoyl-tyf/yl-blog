@@ -36,7 +36,7 @@
         >
           <div
             v-if="msg.role === 'assistant'"
-            class="ai-chat__message-text"
+            class="ai-chat__message-text ai-chat__message-text--md"
             v-text="msg.content"
           ></div>
           <div v-else class="ai-chat__message-text" v-text="msg.content"></div>
