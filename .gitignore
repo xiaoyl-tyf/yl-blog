@@ -40,5 +40,13 @@ tmp/
 temp/
 *.tmp
 
+# Vite cache
+.vite-cache/
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+
 # Claude Code
 .claude/plans/
