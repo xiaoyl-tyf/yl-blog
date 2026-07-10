@@ -27,8 +27,8 @@
         </div>
       </div>
 
-      <!-- Messages -->
-      <div v-else class="ai-chat__messages" ref="messagesRef">
+      <!-- Messages + Loading (always visible when not empty, to avoid DOM toggle) -->
+      <div v-show="messages.length > 0 || loading || error" class="ai-chat__messages" ref="messagesRef">
         <div
           v-for="(msg, i) in messages"
           :key="i"
@@ -37,9 +37,9 @@
           <div
             v-if="msg.role === 'assistant'"
             class="ai-chat__message-text"
-            v-html="renderMarkdown(msg.content)"
+            v-text="msg.content"
           ></div>
-          <div v-else class="ai-chat__message-text">{{ msg.content }}</div>
+          <div v-else class="ai-chat__message-text" v-text="msg.content"></div>
         </div>
 
         <!-- Loading indicator -->
@@ -152,47 +152,40 @@ async function handleSend() {
       throw new Error(err.error || '请求失败')
     }
 
-    // Read stream into a character buffer
-    const charBuffer = []
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buf = ''
-    let streamDone = false
+    let lastUpdate = 0
+    const MIN_GAP = 50 // minimum ms between UI updates
 
-    // Background reader: push characters into buffer
-    ;(async () => {
-      try {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) { streamDone = true; return }
-          buf += decoder.decode(value, { stream: true })
-          const lines = buf.split('\n')
-          buf = lines.pop() || ''
-          for (const line of lines) {
-            const s = line.trim()
-            if (!s.startsWith('data: ')) continue
-            try {
-              const e = JSON.parse(s.slice(6))
-              if (e.type === 'delta') {
-                for (const ch of e.content) charBuffer.push(ch)
-              } else if (e.type === 'error') {
-                throw new Error(e.error)
-              }
-            } catch (ex) { if (!(ex instanceof SyntaxError)) throw ex }
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buf += decoder.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() || ''
+
+      for (const line of lines) {
+        const s = line.trim()
+        if (!s.startsWith('data: ')) continue
+        try {
+          const e = JSON.parse(s.slice(6))
+          if (e.type === 'delta') {
+            assistantMsg.content += e.content
+            const now = Date.now()
+            if (now - lastUpdate >= MIN_GAP) {
+              lastUpdate = now
+              await nextTick()
+              scrollToBottom()
+            }
+          } else if (e.type === 'error') {
+            throw new Error(e.error)
           }
+        } catch (ex) {
+          if (!(ex instanceof SyntaxError)) throw ex
         }
-      } catch (ex) {
-        streamDone = true
       }
-    })()
-
-    // Animation loop: consume buffer at 50ms/char
-    while (!streamDone || charBuffer.length > 0) {
-      if (charBuffer.length > 0) {
-        assistantMsg.content += charBuffer.shift()
-        scrollToBottom()
-      }
-      await new Promise(r => setTimeout(r, 50))
     }
 
     loading.value = false
