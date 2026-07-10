@@ -104,5 +104,13 @@ export const api = {
       method: 'POST',
       body: formData
     })
+  },
+
+  // Chat
+  chat(message, history = []) {
+    return request('/chat', {
+      method: 'POST',
+      body: JSON.stringify({ message, history })
+    })
   }
 }

@@ -26,7 +26,8 @@
       "mcp__ccd_session__*",
       "mcp__ccd_session_mgmt__*",
       "mcp__ccd_directory__*",
-      "mcp__scheduled-tasks__*"
+      "mcp__scheduled-tasks__*",
+      "Bash(git add *)"
     ]
   }
 }

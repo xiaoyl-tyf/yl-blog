@@ -10,79 +10,87 @@
       </div>
     </section>
 
-    <section class="container container--narrow">
-      <!-- Tags -->
-      <div v-if="tags.length" class="tag-list">
-        <router-link
-          v-for="t in tags"
-          :key="t.name"
-          :to="{ name: 'TagPosts', params: { tag: t.name } }"
-          class="tag"
-        >
-          {{ t.name }} ({{ t.count }})
-        </router-link>
-      </div>
+    <div class="home-layout">
+      <div class="home-main">
+        <section class="container container--narrow">
+          <!-- Tags -->
+          <div v-if="tags.length" class="tag-list">
+            <router-link
+              v-for="t in tags"
+              :key="t.name"
+              :to="{ name: 'TagPosts', params: { tag: t.name } }"
+              class="tag"
+            >
+              {{ t.name }} ({{ t.count }})
+            </router-link>
+          </div>
 
-      <!-- Posts -->
-      <div v-if="loading" class="loading">加载中...</div>
-      <div v-else-if="error" class="empty-state">
-        <div class="empty-state__icon">!</div>
-        <p>{{ error }}</p>
-      </div>
-      <template v-else>
-        <div class="post-grid">
-          <article
-            v-for="post in posts"
-            :key="post.id"
-            class="post-card"
-            @click="$router.push({ name: 'PostDetail', params: { slug: post.slug } })"
-          >
-            <div class="post-card__meta">
-              <span>{{ formatDate(post.created_at) }}</span>
+          <!-- Posts -->
+          <div v-if="loading" class="loading">加载中...</div>
+          <div v-else-if="error" class="empty-state">
+            <div class="empty-state__icon">!</div>
+            <p>{{ error }}</p>
+          </div>
+          <template v-else>
+            <div class="post-grid">
+              <article
+                v-for="post in posts"
+                :key="post.id"
+                class="post-card"
+                @click="$router.push({ name: 'PostDetail', params: { slug: post.slug } })"
+              >
+                <div class="post-card__meta">
+                  <span>{{ formatDate(post.created_at) }}</span>
+                </div>
+                <h2 class="post-card__title">
+                  <router-link :to="{ name: 'PostDetail', params: { slug: post.slug } }">
+                    {{ post.title }}
+                  </router-link>
+                </h2>
+                <p class="post-card__excerpt">{{ post.excerpt }}</p>
+                <div class="post-card__tags">
+                  <span v-for="tag in post.tags" :key="tag" class="tag">{{ tag }}</span>
+                </div>
+              </article>
             </div>
-            <h2 class="post-card__title">
-              <router-link :to="{ name: 'PostDetail', params: { slug: post.slug } }">
-                {{ post.title }}
-              </router-link>
-            </h2>
-            <p class="post-card__excerpt">{{ post.excerpt }}</p>
-            <div class="post-card__tags">
-              <span v-for="tag in post.tags" :key="tag" class="tag">{{ tag }}</span>
-            </div>
-          </article>
-        </div>
 
-        <!-- Pagination -->
-        <div v-if="totalPages > 1" class="pagination">
-          <button
-            :disabled="currentPage <= 1"
-            @click="goToPage(currentPage - 1)"
-          >
-            上一页
-          </button>
-          <button
-            v-for="p in totalPages"
-            :key="p"
-            :class="{ active: p === currentPage }"
-            @click="goToPage(p)"
-          >
-            {{ p }}
-          </button>
-          <button
-            :disabled="currentPage >= totalPages"
-            @click="goToPage(currentPage + 1)"
-          >
-            下一页
-          </button>
-        </div>
-      </template>
-    </section>
+            <!-- Pagination -->
+            <div v-if="totalPages > 1" class="pagination">
+              <button
+                :disabled="currentPage <= 1"
+                @click="goToPage(currentPage - 1)"
+              >
+                上一页
+              </button>
+              <button
+                v-for="p in totalPages"
+                :key="p"
+                :class="{ active: p === currentPage }"
+                @click="goToPage(p)"
+              >
+                {{ p }}
+              </button>
+              <button
+                :disabled="currentPage >= totalPages"
+                @click="goToPage(currentPage + 1)"
+              >
+                下一页
+              </button>
+            </div>
+          </template>
+        </section>
+      </div>
+      <aside class="home-sidebar">
+        <AiChat />
+      </aside>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
 import { api } from '@/api'
+import AiChat from '@/components/AiChat.vue'
 
 const settings = ref({})
 const posts = ref([])

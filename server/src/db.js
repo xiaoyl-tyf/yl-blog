@@ -57,6 +57,10 @@ function initTables() {
   insertSetting.run('site_title', 'YL');
   insertSetting.run('site_subtitle', '记录思考，分享见闻');
   insertSetting.run('about_content', '## 关于我\n\n这里是我的个人博客。');
+  insertSetting.run('ai_enabled', 'false');
+  insertSetting.run('ai_api_key', '');
+  insertSetting.run('ai_model', 'claude-opus-4-8');
+  insertSetting.run('ai_system_prompt', '你是这个个人博客的AI助手。你可以根据提供的文章列表回答访客关于博客内容的问题。请用中文回答，保持友好、简洁的风格。如果访客问的问题与博客内容无关，礼貌地说明你主要帮助解答博客相关的问题。');
 }
 
 module.exports = { getDb };

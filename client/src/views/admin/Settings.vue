@@ -44,6 +44,46 @@
 
       <hr style="margin: var(--space-xl) 0; border: none; border-top: 1px solid var(--color-border);" />
 
+      <h2 style="font-family: var(--font-display); font-size: 1.2rem; margin-bottom: var(--space-md);">AI 聊天配置</h2>
+
+      <div class="form-group">
+        <label class="form-label" style="display: flex; align-items: center; gap: 8px;">
+          启用 AI 聊天
+          <span style="font-weight: 400; color: var(--color-text-muted); font-size: 0.78rem;">（在首页右侧显示聊天窗口）</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" v-model="aiEnabled" true-value="true" false-value="false" />
+          <span class="toggle__slider"></span>
+        </label>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Anthropic API Key</label>
+        <input v-model="aiApiKey" type="password" class="form-input" placeholder="sk-ant-..." />
+        <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 4px;">
+          API Key 仅在服务端使用，不会暴露给前端。
+        </p>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">模型</label>
+        <select v-model="aiModel" class="form-select">
+          <option value="claude-opus-4-8">Claude Opus 4.8（推荐）</option>
+          <option value="claude-sonnet-5">Claude Sonnet 5</option>
+          <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">系统提示词</label>
+        <textarea v-model="aiSystemPrompt" class="form-textarea" rows="4" placeholder="自定义 AI 助手的行为..."></textarea>
+        <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 4px;">
+          系统提示词会与博客文章列表合并后发送给 AI 模型。
+        </p>
+      </div>
+
+      <hr style="margin: var(--space-xl) 0; border: none; border-top: 1px solid var(--color-border);" />
+
       <h2 style="font-family: var(--font-display); font-size: 1.2rem; margin-bottom: var(--space-md);">修改密码</h2>
 
       <form @submit.prevent="handleChangePassword">
@@ -85,6 +125,11 @@ const changingPw = ref(false)
 const pwError = ref('')
 const pwSuccess = ref('')
 
+const aiEnabled = ref('false')
+const aiApiKey = ref('')
+const aiModel = ref('claude-opus-4-8')
+const aiSystemPrompt = ref('')
+
 const renderedAbout = computed(() => {
   if (!aboutContent.value) return ''
   return marked(aboutContent.value, { breaks: true })
@@ -103,6 +148,10 @@ async function handleSave() {
     await api.updateSetting('site_title', siteTitle.value)
     await api.updateSetting('site_subtitle', siteSubtitle.value)
     await api.updateSetting('about_content', aboutContent.value)
+    await api.updateSetting('ai_enabled', aiEnabled.value)
+    await api.updateSetting('ai_api_key', aiApiKey.value)
+    await api.updateSetting('ai_model', aiModel.value)
+    await api.updateSetting('ai_system_prompt', aiSystemPrompt.value)
     success.value = '设置已保存！'
   } catch (e) {
     alert(e.message)
@@ -133,6 +182,10 @@ onMounted(async () => {
     siteTitle.value = settings.site_title || ''
     siteSubtitle.value = settings.site_subtitle || ''
     aboutContent.value = settings.about_content || ''
+    aiEnabled.value = settings.ai_enabled || 'false'
+    aiApiKey.value = settings.ai_api_key || ''
+    aiModel.value = settings.ai_model || 'claude-opus-4-8'
+    aiSystemPrompt.value = settings.ai_system_prompt || ''
   } catch {}
 })
 </script>

@@ -6,6 +6,7 @@ const postRoutes = require('./routes/posts');
 const tagRoutes = require('./routes/tags');
 const settingRoutes = require('./routes/settings');
 const uploadRoutes = require('./routes/upload');
+const chatRoutes = require('./routes/chat');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -20,6 +21,7 @@ app.use('/api/posts', postRoutes);
 app.use('/api/tags', tagRoutes);
 app.use('/api/settings', settingRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/chat', chatRoutes);
 
 // Serve static files in production
 const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');
