@@ -8,108 +8,149 @@
         <a href="#" @click.prevent="handleLogout">退出</a>
       </nav>
     </header>
-    <main class="admin-main">
-      <h1 style="font-family: var(--font-display); font-size: 1.5rem; margin-bottom: var(--space-xl);">站点设置</h1>
+    <div class="admin-settings-layout">
+      <!-- Sidebar TOC -->
+      <aside class="admin-settings-sidebar">
+        <nav class="admin-settings-nav">
+          <a
+            v-for="s in sections"
+            :key="s.id"
+            :class="['admin-settings-nav__item', { 'admin-settings-nav__item--active': activeSection === s.id }]"
+            :href="'#' + s.id"
+            @click.prevent="scrollToSection(s.id)"
+          >{{ s.label }}</a>
+        </nav>
+      </aside>
 
-      <div v-if="success" class="alert alert--success">{{ success }}</div>
+      <!-- Main content -->
+      <div class="admin-settings-content" ref="contentRef">
+        <div v-if="success" class="alert alert--success">{{ success }}</div>
 
-      <div class="form-group">
-        <label class="form-label">站点标题</label>
-        <input v-model="siteTitle" type="text" class="form-input" placeholder="例如：YL" />
-      </div>
+        <!-- Section: Site -->
+        <section id="sec-site" class="admin-section">
+          <div class="admin-section__header">
+            <h2 class="admin-section__title">站点信息</h2>
+            <p class="admin-section__desc">设置博客的基本信息和对外展示内容</p>
+          </div>
+          <div class="admin-section__body">
+            <div class="form-group">
+              <label class="form-label">站点标题</label>
+              <input v-model="siteTitle" type="text" class="form-input" placeholder="例如：YL" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">站点副标题</label>
+              <input v-model="siteSubtitle" type="text" class="form-input" placeholder="例如：记录思考，分享见闻" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">关于页面内容 <span class="form-label__hint">（Markdown）</span></label>
+              <textarea v-model="aboutContent" class="form-textarea" rows="8" placeholder="写一段关于你自己的介绍..."></textarea>
+            </div>
+            <div class="form-group" v-if="aboutContent">
+              <label class="form-label">预览</label>
+              <div class="editor-preview">
+                <div class="about-content" v-html="renderedAbout"></div>
+              </div>
+            </div>
+          </div>
+        </section>
 
-      <div class="form-group">
-        <label class="form-label">站点副标题</label>
-        <input v-model="siteSubtitle" type="text" class="form-input" placeholder="例如：记录思考，分享见闻" />
-      </div>
+        <!-- Section: AI Chat -->
+        <section id="sec-ai" class="admin-section">
+          <div class="admin-section__header">
+            <h2 class="admin-section__title">AI 聊天</h2>
+            <p class="admin-section__desc">配置首页 AI 聊天助手的行为与模型参数</p>
+          </div>
+          <div class="admin-section__body">
+            <div class="form-group">
+              <label class="form-label">启用状态</label>
+              <div class="form-inline">
+                <label class="toggle">
+                  <input type="checkbox" v-model="aiEnabled" true-value="true" false-value="false" />
+                  <span class="toggle__slider"></span>
+                </label>
+                <span class="form-inline__label">{{ aiEnabled === 'true' ? '已开启 — 首页右侧显示聊天窗口' : '已关闭 — 不在首页显示聊天窗口' }}</span>
+              </div>
+            </div>
 
-      <div class="form-group">
-        <label class="form-label">关于页面内容（Markdown）</label>
-        <textarea v-model="aboutContent" class="form-textarea" rows="10" placeholder="写一段关于你自己的介绍..."></textarea>
-      </div>
+            <div class="form-group">
+              <label class="form-label">API 服务商</label>
+              <select v-model="aiProvider" class="form-select" style="max-width:320px">
+                <option value="anthropic">Anthropic（Claude）</option>
+                <option value="deepseek">DeepSeek</option>
+              </select>
+            </div>
 
-      <div class="form-group" v-if="aboutContent">
-        <label class="form-label">关于页面预览</label>
-        <div class="editor-preview">
-          <div class="about-content" v-html="renderedAbout"></div>
+            <div class="form-group">
+              <label class="form-label">API Key</label>
+              <input v-model="aiApiKey" type="password" class="form-input" :placeholder="aiProvider === 'anthropic' ? 'sk-ant-api03-...' : 'sk-...'" style="max-width:480px" />
+              <p class="form-hint">API Key 仅在服务端使用，不会暴露给前端</p>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">模型</label>
+              <select v-model="aiModel" class="form-select" style="max-width:320px">
+                <template v-if="aiProvider === 'anthropic'">
+                  <option value="claude-opus-4-8">Claude Opus 4.8 — 最强推理</option>
+                  <option value="claude-sonnet-5">Claude Sonnet 5 — 性价比推荐</option>
+                  <option value="claude-haiku-4-5">Claude Haiku 4.5 — 轻量快速</option>
+                </template>
+                <template v-else>
+                  <option value="deepseek-v4-flash">DeepSeek V4 Flash — 高性价比</option>
+                  <option value="deepseek-v4-pro">DeepSeek V4 Pro — 强推理</option>
+                </template>
+              </select>
+              <p class="form-hint">选择 {{ aiProvider === 'anthropic' ? 'Anthropic' : 'DeepSeek' }} 的模型。模型能力越强，回复质量越高，但成本也越高</p>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">系统提示词</label>
+              <textarea v-model="aiSystemPrompt" class="form-textarea" rows="5" placeholder="自定义 AI 助手的行为..."></textarea>
+              <p class="form-hint">系统提示词定义了 AI 的角色和行为方式，会与博客文章列表合并后一起发送给模型</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Section: Password -->
+        <section id="sec-password" class="admin-section">
+          <div class="admin-section__header">
+            <h2 class="admin-section__title">账户安全</h2>
+            <p class="admin-section__desc">修改管理员登录密码</p>
+          </div>
+          <div class="admin-section__body">
+            <form @submit.prevent="handleChangePassword">
+              <div class="form-group">
+                <label class="form-label">当前密码</label>
+                <input v-model="oldPassword" type="password" class="form-input" style="max-width:320px" required />
+              </div>
+              <div class="form-group">
+                <label class="form-label">新密码</label>
+                <input v-model="newPassword" type="password" class="form-input" style="max-width:320px" required minlength="6" placeholder="至少 6 位" />
+              </div>
+              <button type="submit" class="btn" :disabled="changingPw">
+                <span v-if="changingPw" class="loading-spinner"></span>
+                修改密码
+              </button>
+              <p v-if="pwError" class="form-feedback form-feedback--error">{{ pwError }}</p>
+              <p v-if="pwSuccess" class="form-feedback form-feedback--success">{{ pwSuccess }}</p>
+            </form>
+          </div>
+        </section>
+
+        <!-- Save bar -->
+        <div class="admin-save-bar">
+          <button class="btn btn--primary btn--lg" @click="handleSave" :disabled="saving">
+            <span v-if="saving" class="loading-spinner"></span>
+            保存所有设置
+          </button>
+          <span v-if="success" class="admin-save-bar__msg">{{ success }}</span>
         </div>
       </div>
-
-      <div style="display: flex; gap: 8px;">
-        <button class="btn btn--primary" @click="handleSave" :disabled="saving">
-          <span v-if="saving" class="loading-spinner"></span>
-          保存设置
-        </button>
-      </div>
-
-      <hr style="margin: var(--space-xl) 0; border: none; border-top: 1px solid var(--color-border);" />
-
-      <h2 style="font-family: var(--font-display); font-size: 1.2rem; margin-bottom: var(--space-md);">AI 聊天配置</h2>
-
-      <div class="form-group">
-        <label class="form-label" style="display: flex; align-items: center; gap: 8px;">
-          启用 AI 聊天
-          <span style="font-weight: 400; color: var(--color-text-muted); font-size: 0.78rem;">（在首页右侧显示聊天窗口）</span>
-        </label>
-        <label class="toggle">
-          <input type="checkbox" v-model="aiEnabled" true-value="true" false-value="false" />
-          <span class="toggle__slider"></span>
-        </label>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">API Key</label>
-        <input v-model="aiApiKey" type="password" class="form-input" placeholder="sk-ant-... 或 sk-..." />
-        <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 4px;">
-          支持 Anthropic API Key 和 DeepSeek API Key。API Key 仅在服务端使用，不会暴露给前端。
-        </p>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">模型</label>
-        <select v-model="aiModel" class="form-select">
-          <option value="claude-opus-4-8">Claude Opus 4.8（推荐）</option>
-          <option value="claude-sonnet-5">Claude Sonnet 5</option>
-          <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
-          <option value="deepseek-v4-flash">DeepSeek V4 Flash</option>
-          <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">系统提示词</label>
-        <textarea v-model="aiSystemPrompt" class="form-textarea" rows="4" placeholder="自定义 AI 助手的行为..."></textarea>
-        <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 4px;">
-          系统提示词会与博客文章列表合并后发送给 AI 模型。
-        </p>
-      </div>
-
-      <hr style="margin: var(--space-xl) 0; border: none; border-top: 1px solid var(--color-border);" />
-
-      <h2 style="font-family: var(--font-display); font-size: 1.2rem; margin-bottom: var(--space-md);">修改密码</h2>
-
-      <form @submit.prevent="handleChangePassword">
-        <div class="form-group">
-          <label class="form-label">原密码</label>
-          <input v-model="oldPassword" type="password" class="form-input" required />
-        </div>
-        <div class="form-group">
-          <label class="form-label">新密码</label>
-          <input v-model="newPassword" type="password" class="form-input" required minlength="6" />
-        </div>
-        <button type="submit" class="btn" :disabled="changingPw">
-          <span v-if="changingPw" class="loading-spinner"></span>
-          修改密码
-        </button>
-        <p v-if="pwError" style="color: var(--color-error); margin-top: 8px; font-size: 0.85rem;">{{ pwError }}</p>
-        <p v-if="pwSuccess" style="color: var(--color-success); margin-top: 8px; font-size: 0.85rem;">{{ pwSuccess }}</p>
-      </form>
-    </main>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { marked } from 'marked'
 import { api } from '@/api'
@@ -128,9 +169,19 @@ const pwError = ref('')
 const pwSuccess = ref('')
 
 const aiEnabled = ref('false')
+const aiProvider = ref('anthropic')
 const aiApiKey = ref('')
 const aiModel = ref('claude-opus-4-8')
 const aiSystemPrompt = ref('')
+
+const activeSection = ref('sec-site')
+const contentRef = ref(null)
+
+const sections = [
+  { id: 'sec-site', label: '站点信息' },
+  { id: 'sec-ai', label: 'AI 聊天' },
+  { id: 'sec-password', label: '账户安全' }
+]
 
 const renderedAbout = computed(() => {
   if (!aboutContent.value) return ''
@@ -154,7 +205,7 @@ async function handleSave() {
     await api.updateSetting('ai_api_key', aiApiKey.value)
     await api.updateSetting('ai_model', aiModel.value)
     await api.updateSetting('ai_system_prompt', aiSystemPrompt.value)
-    success.value = '设置已保存！'
+    success.value = '所有设置已保存'
   } catch (e) {
     alert(e.message)
   } finally {
@@ -168,13 +219,32 @@ async function handleChangePassword() {
   changingPw.value = true
   try {
     await api.changePassword(oldPassword.value, newPassword.value)
-    pwSuccess.value = '密码修改成功！'
+    pwSuccess.value = '密码修改成功'
     oldPassword.value = ''
     newPassword.value = ''
   } catch (e) {
     pwError.value = e.message || '修改失败'
   } finally {
     changingPw.value = false
+  }
+}
+
+function scrollToSection(id) {
+  activeSection.value = id
+  const el = document.getElementById(id)
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+}
+
+function onScroll() {
+  if (!contentRef.value) return
+  const sections_ = contentRef.value.querySelectorAll('.admin-section')
+  const scrollTop = contentRef.value.scrollTop + 20
+  for (const s of sections_) {
+    if (s.offsetTop <= scrollTop) {
+      activeSection.value = s.id
+    }
   }
 }
 
@@ -188,6 +258,17 @@ onMounted(async () => {
     aiApiKey.value = settings.ai_api_key || ''
     aiModel.value = settings.ai_model || 'claude-opus-4-8'
     aiSystemPrompt.value = settings.ai_system_prompt || ''
+    // Detect provider from model
+    aiProvider.value = (settings.ai_model || '').startsWith('deepseek') ? 'deepseek' : 'anthropic'
   } catch {}
+  if (contentRef.value) {
+    contentRef.value.addEventListener('scroll', onScroll, { passive: true })
+  }
+})
+
+onUnmounted(() => {
+  if (contentRef.value) {
+    contentRef.value.removeEventListener('scroll', onScroll)
+  }
 })
 </script>

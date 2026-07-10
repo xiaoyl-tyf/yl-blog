@@ -34,7 +34,12 @@
           :key="i"
           :class="['ai-chat__message', 'ai-chat__message--' + msg.role]"
         >
-          <div class="ai-chat__message-text">{{ msg.content }}</div>
+          <div
+            v-if="msg.role === 'assistant'"
+            class="ai-chat__message-text ai-chat__message-text--md"
+            v-html="renderMarkdown(msg.content)"
+          ></div>
+          <div v-else class="ai-chat__message-text">{{ msg.content }}</div>
         </div>
 
         <!-- Loading indicator -->
@@ -79,6 +84,7 @@
 
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
+import { marked } from 'marked'
 import { api } from '@/api'
 
 const enabled = ref(false)
@@ -97,6 +103,11 @@ const suggestedQuestions = [
 ]
 
 const MAX_HISTORY = 20
+
+function renderMarkdown(text) {
+  if (!text) return ''
+  return marked(text, { breaks: true })
+}
 
 onMounted(async () => {
   try {

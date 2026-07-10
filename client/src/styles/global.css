@@ -402,6 +402,43 @@ h1,h2,h3,h4{font-family:var(--font-display);font-weight:600;line-height:1.35;col
   border-left:2px solid rgba(197,69,42,0.3);
   color:var(--color-text-secondary);
 }
+.ai-chat__message-text--md p{margin-bottom:0.45rem}
+.ai-chat__message-text--md p:last-child{margin-bottom:0}
+.ai-chat__message-text--md strong{font-weight:600;color:var(--color-text)}
+.ai-chat__message-text--md em{color:var(--color-text-secondary)}
+.ai-chat__message-text--md code{
+  font-family:var(--font-mono);
+  background:var(--color-code-bg);
+  padding:1px 5px;border-radius:3px;
+  font-size:0.87em;color:#C5455E;
+}
+.ai-chat__message-text--md ul,.ai-chat__message-text--md ol{
+  padding-left:1.2rem;margin-bottom:0.45rem;
+}
+.ai-chat__message-text--md li{margin-bottom:0.2rem}
+.ai-chat__message-text--md h2,.ai-chat__message-text--md h3,.ai-chat__message-text--md h4{
+  font-family:var(--font-display);
+  font-weight:600;margin:0.6rem 0 0.3rem;
+  color:var(--color-text);
+}
+.ai-chat__message-text--md h2{font-size:1rem}
+.ai-chat__message-text--md h3{font-size:0.92rem}
+.ai-chat__message-text--md h4{font-size:0.86rem}
+.ai-chat__message-text--md a{
+  color:var(--color-accent);
+  text-decoration:underline;text-underline-offset:2px;
+}
+.ai-chat__message-text--md blockquote{
+  border-left:2px solid var(--color-accent);
+  padding:0.3rem 0.65rem;margin:0.4rem 0;
+  background:var(--color-accent-light);
+  border-radius:0 var(--radius-sm) var(--radius-sm) 0;
+  color:var(--color-text-secondary);
+}
+.ai-chat__message-text--md hr{
+  border:none;border-top:1px solid var(--color-border-light);
+  margin:0.5rem 0;
+}
 .ai-chat__loading{
   display:flex;gap:5px;padding:0.5rem 0.75rem;
 }
@@ -481,4 +518,102 @@ h1,h2,h3,h4{font-family:var(--font-display);font-weight:600;line-height:1.35;col
     grid-template-columns:1fr minmax(auto,var(--max-width)) 1fr;
   }
   .home-sidebar{display:none}
+}
+
+/* ===== Admin Settings Layout ===== */
+.admin-settings-layout{
+  display:grid;
+  grid-template-columns:220px 1fr;
+  min-height:calc(100vh - 56px);
+  max-width:1100px;margin:0 auto;
+}
+.admin-settings-sidebar{
+  position:sticky;top:72px;
+  align-self:start;
+  padding:var(--space-xl) var(--space-lg) var(--space-xl) 0;
+}
+.admin-settings-nav{
+  display:flex;flex-direction:column;gap:4px;
+}
+.admin-settings-nav__item{
+  display:block;
+  padding:0.55rem 0.85rem;
+  font-size:0.86rem;font-family:var(--font-body);
+  color:var(--color-text-secondary);
+  text-decoration:none;
+  border-radius:var(--radius-sm);
+  transition:all var(--transition);
+  border-left:2px solid transparent;
+}
+.admin-settings-nav__item:hover{
+  color:var(--color-text);
+  background:var(--color-code-bg);
+}
+.admin-settings-nav__item--active{
+  color:var(--color-accent);
+  border-left-color:var(--color-accent);
+  background:var(--color-accent-light);
+  font-weight:600;
+}
+.admin-settings-content{
+  padding:var(--space-xl) var(--space-lg);
+  overflow-y:auto;max-height:calc(100vh - 56px);
+}
+.admin-section{
+  background:var(--color-surface);
+  border:1px solid var(--color-border-light);
+  border-radius:var(--radius-md);
+  margin-bottom:var(--space-lg);
+  overflow:hidden;
+}
+.admin-section__header{
+  padding:var(--space-lg) var(--space-lg) 0;
+}
+.admin-section__title{
+  font-family:var(--font-display);
+  font-size:1.15rem;font-weight:700;
+  margin:0 0 0.25rem;
+  color:var(--color-text);
+}
+.admin-section__desc{
+  font-size:0.83rem;color:var(--color-text-muted);
+  margin:0;
+}
+.admin-section__body{
+  padding:var(--space-lg);
+}
+.admin-save-bar{
+  display:flex;align-items:center;gap:var(--space-md);
+  padding:var(--space-md) 0 var(--space-2xl);
+}
+.admin-save-bar__msg{
+  font-size:0.85rem;color:var(--color-success);
+}
+.btn--lg{padding:12px 28px;font-size:0.93rem}
+
+.form-inline{
+  display:flex;align-items:center;gap:12px;
+}
+.form-inline__label{
+  font-size:0.83rem;color:var(--color-text-secondary);
+}
+.form-hint{
+  font-size:0.75rem;color:var(--color-text-muted);
+  margin-top:4px;margin-bottom:0;
+}
+.form-feedback{
+  margin-top:8px;font-size:0.85rem;
+}
+.form-feedback--error{color:var(--color-error)}
+.form-feedback--success{color:var(--color-success)}
+
+@media(max-width:768px){
+  .admin-settings-layout{
+    grid-template-columns:1fr;
+  }
+  .admin-settings-sidebar{display:none}
+  .admin-settings-content{
+    max-height:none;overflow-y:visible;
+    padding:var(--space-md);
+  }
 }
