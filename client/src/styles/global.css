@@ -302,7 +302,8 @@ h1,h2,h3,h4{font-family:var(--font-display);font-weight:600;line-height:1.35;col
 .post-toc::-webkit-scrollbar{width:4px}
 .post-toc::-webkit-scrollbar-thumb{background:var(--color-border);border-radius:2px}
 
-.post-sidebar--left{grid-column:1;padding-left:max(1rem, calc((100vw - 1440px) / 2 + 1rem));padding-top:0.25rem}
+.post-sidebar--left{grid-column:1;padding-left:max(1rem, calc((100vw - 1440px) / 2 + 1rem));padding-top:0.25rem;position:sticky;top:96px;align-self:start}
+
 .post-sidebar--right{grid-column:3}
 
 /* Show sidebar only on wider screens */
