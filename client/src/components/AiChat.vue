@@ -37,7 +37,7 @@
           <div
             v-if="msg.role === 'assistant'"
             class="ai-chat__message-text ai-chat__message-text--md"
-            v-html="msg._streaming ? escapeHtml(msg.content) : renderMarkdown(msg.content)"
+            v-html="renderMarkdown(msg.content)"
           ></div>
           <div v-else class="ai-chat__message-text">{{ msg.content }}</div>
         </div>
@@ -107,12 +107,6 @@ const MAX_HISTORY = 20
 function renderMarkdown(text) {
   if (!text) return ''
   return marked(text, { breaks: true })
-}
-
-function escapeHtml(text) {
-  const div = document.createElement('div')
-  div.textContent = text
-  return div.innerHTML
 }
 
 onMounted(async () => {
