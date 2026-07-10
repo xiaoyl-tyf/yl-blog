@@ -37,7 +37,7 @@
           <div
             v-if="msg.role === 'assistant'"
             class="ai-chat__message-text ai-chat__message-text--md"
-            v-html="renderMarkdown(msg.content)"
+            v-html="msg._streaming ? escapeHtml(msg.content) : renderMarkdown(msg.content)"
           ></div>
           <div v-else class="ai-chat__message-text">{{ msg.content }}</div>
         </div>
@@ -109,6 +109,12 @@ function renderMarkdown(text) {
   return marked(text, { breaks: true })
 }
 
+function escapeHtml(text) {
+  const div = document.createElement('div')
+  div.textContent = text
+  return div.innerHTML
+}
+
 onMounted(async () => {
   try {
     const settings = await api.getSettings()
@@ -131,37 +137,78 @@ async function handleSend() {
   await nextTick()
   scrollToBottom()
 
-  // Add a placeholder for the streaming assistant message
   const assistantMsg = { role: 'assistant', content: '' }
   messages.value.push(assistantMsg)
 
+  const chatHistory = messages.value.slice(-MAX_HISTORY - 2, -2)
+
   try {
-    const history = messages.value.slice(-MAX_HISTORY - 2, -2) // exclude user + placeholder
-    await api.chatStream(
-      text,
-      history,
-      // onDelta: append each chunk
-      (chunk) => {
-        assistantMsg.content += chunk
-        nextTick(() => scrollToBottom())
-      },
-      // onError
-      (err) => {
-        // Remove empty assistant message on error
-        const idx = messages.value.indexOf(assistantMsg)
-        if (idx !== -1 && !assistantMsg.content) {
-          messages.value.splice(idx, 1)
+    const token = localStorage.getItem('token')
+    const reqHeaders = { 'Content-Type': 'application/json' }
+    if (token) reqHeaders['Authorization'] = `Bearer ${token}`
+
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: reqHeaders,
+      body: JSON.stringify({ message: text, history: chatHistory, stream: true })
+    })
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ error: '请求失败' }))
+      throw new Error(err.error || '请求失败')
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    // Buffer: accumulate character chunks, then animate them via setInterval
+    const charQueue = []
+    const tickMs = 40 // ~25 chars/second
+
+    const intervalId = setInterval(() => {
+      if (charQueue.length === 0) return
+      const batch = charQueue.splice(0, 2).join('') // 2 chars per tick
+      assistantMsg.content += batch
+      scrollToBottom()
+    }, tickMs)
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buf += decoder.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() || ''
+
+      for (const line of lines) {
+        const s = line.trim()
+        if (!s.startsWith('data: ')) continue
+        try {
+          const e = JSON.parse(s.slice(6))
+          if (e.type === 'delta') {
+            charQueue.push(e.content)
+          } else if (e.type === 'error') {
+            throw new Error(e.error)
+          }
+        } catch (ex) {
+          if (!(ex instanceof SyntaxError)) throw ex
         }
-        error.value = err.message || 'AI 回复失败，请稍后重试'
-        isRetryable.value = true
-        loading.value = false
-      },
-      // onDone
-      () => {
-        loading.value = false
-        nextTick(() => scrollToBottom())
       }
-    )
+    }
+
+    // Drain the animation queue
+    while (charQueue.length > 0) {
+      await new Promise(r => setTimeout(r, tickMs))
+    }
+    clearInterval(intervalId)
+
+    // Render through marked for final formatting
+    const finalContent = assistantMsg.content
+    assistantMsg.content = marked(finalContent, { breaks: true })
+
+    loading.value = false
+    await nextTick()
+    scrollToBottom()
   } catch (e) {
     // Remove empty assistant message
     const idx = messages.value.indexOf(assistantMsg)
