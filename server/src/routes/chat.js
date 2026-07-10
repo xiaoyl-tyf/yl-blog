@@ -117,7 +117,7 @@ router.post('/', async (req, res) => {
       } catch {
         errMsg = `API 返回错误 (${response.status})`;
       }
-      console.error('[chat] API error:', errBody);
+      console.error(`[chat] ${isDeepSeek ? 'DeepSeek' : 'Anthropic'} API error (${response.status}):`, errBody);
       return res.status(502).json({ error: errMsg });
     }
 

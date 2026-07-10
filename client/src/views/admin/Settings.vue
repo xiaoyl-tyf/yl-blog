@@ -71,7 +71,8 @@
           <option value="claude-opus-4-8">Claude Opus 4.8（推荐）</option>
           <option value="claude-sonnet-5">Claude Sonnet 5</option>
           <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
-          <option value="deepseek-chat">DeepSeek Chat</option>
+          <option value="deepseek-v4-flash">DeepSeek V4 Flash</option>
+          <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
         </select>
       </div>
 
