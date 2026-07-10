@@ -1,7 +1,12 @@
 const express = require('express');
 const { getDb } = require('../db');
+const { ProxyAgent } = require('undici');
 
 const router = express.Router();
+
+// Proxy for AI API calls (use system HTTP_PROXY if available)
+const proxyUrl = process.env.HTTP_PROXY || process.env.HTTPS_PROXY || process.env.http_proxy || process.env.https_proxy || 'http://127.0.0.1:7897';
+const dispatcher = new ProxyAgent({ uri: proxyUrl, requestTls: { rejectUnauthorized: false } });
 
 // POST /api/chat — public endpoint, no auth required
 router.post('/', async (req, res) => {
@@ -94,7 +99,8 @@ router.post('/', async (req, res) => {
               ...messages
             ]
           }),
-          signal: controller.signal
+          signal: controller.signal,
+          dispatcher
         });
       } else {
         response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -111,7 +117,8 @@ router.post('/', async (req, res) => {
             system: fullSystemPrompt,
             messages
           }),
-          signal: controller.signal
+          signal: controller.signal,
+          dispatcher
         });
       }
 
@@ -209,7 +216,8 @@ router.post('/', async (req, res) => {
               ...messages
             ]
           }),
-          signal: controller.signal
+          signal: controller.signal,
+          dispatcher
         });
       } else {
         response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -225,7 +233,8 @@ router.post('/', async (req, res) => {
             system: fullSystemPrompt,
             messages
           }),
-          signal: controller.signal
+          signal: controller.signal,
+          dispatcher
         });
       }
 
