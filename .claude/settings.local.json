@@ -144,7 +144,15 @@
       "Bash(git commit *)",
       "Bash(git rm *)",
       "Bash(git remote *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(ssh -T git@github.com)",
+      "Bash(ping -n 1 github.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(ssh -T -p 443 git@ssh.github.com)",
+      "Bash(reg query *)",
+      "Bash(powershell -Command \"Get-ItemProperty -Path 'HKCU:\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Internet Settings' | Select-Object ProxyEnable, ProxyServer, AutoConfigURL\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" --proxy http://127.0.0.1:7897 https://github.com)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" https://github.com)"
     ]
   }
 }
