@@ -176,7 +176,7 @@ async function handleSend() {
             for (const ch of e.content) {
               assistantMsg.content += ch
               scrollToBottom()
-              await new Promise(r => setTimeout(r, 30))
+              await new Promise(r => setTimeout(r, 50))
             }
           } else if (e.type === 'error') {
             throw new Error(e.error)
