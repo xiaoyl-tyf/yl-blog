@@ -4,9 +4,11 @@ const { ProxyAgent } = require('undici');
 
 const router = express.Router();
 
-// Proxy for AI API calls (use system HTTP_PROXY if available)
-const proxyUrl = process.env.HTTP_PROXY || process.env.HTTPS_PROXY || process.env.http_proxy || process.env.https_proxy || 'http://127.0.0.1:7897';
-const dispatcher = new ProxyAgent({ uri: proxyUrl, requestTls: { rejectUnauthorized: false } });
+// Optional proxy for AI API calls (only used when HTTP_PROXY env var is set)
+const proxyUrl = process.env.HTTP_PROXY || process.env.HTTPS_PROXY || process.env.http_proxy || process.env.https_proxy;
+const dispatcher = proxyUrl
+  ? new ProxyAgent({ uri: proxyUrl, requestTls: { rejectUnauthorized: false } })
+  : undefined;
 
 // POST /api/chat — public endpoint, no auth required
 router.post('/', async (req, res) => {
