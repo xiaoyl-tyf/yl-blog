@@ -131,10 +131,41 @@ async function handleSend() {
   await nextTick()
   scrollToBottom()
 
-  const assistantMsg = { role: 'assistant', content: '' }
-  messages.value.push(assistantMsg)
+  // ---- typing animation state ----
+  let fullText = ''        // collected deltas (hidden buffer)
+  let streamDone = false   // true when SSE stream ends
+  let animId = null
+  const CPS = 80           // chars-per-second for typing effect
+
+  // Push assistant placeholder — access through reactive array so property assignment triggers Vue re-render
+  const msgIdx = messages.value.push({ role: 'assistant', content: '' }) - 1
 
   const chatHistory = messages.value.slice(-MAX_HISTORY - 2, -2)
+
+  function startTyping() {
+    const t0 = performance.now()
+    function tick() {
+      // Access through reactive array so property assignment triggers Vue re-render
+      const msg = messages.value[msgIdx]
+      const elapsed = performance.now() - t0
+      const targetLen = Math.min(
+        Math.floor((elapsed / 1000) * CPS),
+        fullText.length
+      )
+      if (targetLen > msg.content.length) {
+        msg.content = fullText.slice(0, targetLen)
+        scrollToBottom()
+      }
+      if (msg.content.length < fullText.length || !streamDone) {
+        animId = requestAnimationFrame(tick)
+      } else {
+        animId = null
+        loading.value = false
+        scrollToBottom()
+      }
+    }
+    animId = requestAnimationFrame(tick)
+  }
 
   try {
     const token = localStorage.getItem('token')
@@ -152,11 +183,12 @@ async function handleSend() {
       throw new Error(err.error || '请求失败')
     }
 
+    // Start typing animation BEFORE reading — so first chars appear while stream arrives
+    startTyping()
+
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buf = ''
-    let lastUpdate = 0
-    const MIN_GAP = 50 // minimum ms between UI updates
 
     while (true) {
       const { done, value } = await reader.read()
@@ -172,13 +204,7 @@ async function handleSend() {
         try {
           const e = JSON.parse(s.slice(6))
           if (e.type === 'delta') {
-            assistantMsg.content += e.content
-            const now = Date.now()
-            if (now - lastUpdate >= MIN_GAP) {
-              lastUpdate = now
-              await nextTick()
-              scrollToBottom()
-            }
+            fullText += e.content   // collect into buffer, animation reads from it
           } else if (e.type === 'error') {
             throw new Error(e.error)
           }
@@ -188,14 +214,12 @@ async function handleSend() {
       }
     }
 
-    loading.value = false
-    await nextTick()
-    scrollToBottom()
+    streamDone = true   // signal animation: no more data coming
   } catch (e) {
-    // Remove empty assistant message
-    const idx = messages.value.indexOf(assistantMsg)
-    if (idx !== -1 && !assistantMsg.content) {
-      messages.value.splice(idx, 1)
+    if (animId) cancelAnimationFrame(animId)
+    const msg = messages.value[msgIdx]
+    if (msg && !msg.content) {
+      messages.value.splice(msgIdx, 1)
     }
     error.value = e.message || 'AI 回复失败，请稍后重试'
     isRetryable.value = true
