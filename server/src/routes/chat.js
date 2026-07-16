@@ -1,8 +1,33 @@
 const express = require('express');
 const { getDb } = require('../db');
 const { ProxyAgent } = require('undici');
+const rateLimit = require('express-rate-limit');
 
 const router = express.Router();
+
+// Rate limiters — applied per-route
+const chatLimiter = rateLimit({
+  windowMs: 60 * 1000,       // 1 minute
+  max: 10,                    // 10 AI requests per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: '请求过于频繁，请稍后再试' }
+});
+
+const historyLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,                    // 30 history reads/writes per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: '请求过于频繁，请稍后再试' }
+});
+
+// UUID v4 regex for session_id validation
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUUID(s) {
+  return typeof s === 'string' && UUID_RE.test(s);
+}
 
 // Optional proxy for AI API calls (only used when HTTP_PROXY env var is set)
 const proxyUrl = process.env.HTTP_PROXY || process.env.HTTPS_PROXY || process.env.http_proxy || process.env.https_proxy;
@@ -11,7 +36,7 @@ const dispatcher = proxyUrl
   : undefined;
 
 // POST /api/chat — public endpoint, no auth required
-router.post('/', async (req, res) => {
+router.post('/', chatLimiter, async (req, res) => {
   const db = getDb();
   const { message, history, stream } = req.body;
 
@@ -286,12 +311,24 @@ router.post('/', async (req, res) => {
 });
 
 // POST /api/chat/history — save messages (public, no auth)
-router.post('/history', (req, res) => {
+router.post('/history', historyLimiter, (req, res) => {
   const db = getDb();
-  const { session_id, messages } = req.body;
+  const session_id = req.headers['x-session-id'];
+  const { messages } = req.body;
 
-  if (!session_id || !Array.isArray(messages) || messages.length === 0) {
+  if (!session_id || !isUUID(session_id)) {
     return res.status(400).json({ error: '缺少参数' });
+  }
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ error: '缺少参数' });
+  }
+
+  // Content length cap (defense in depth — frontend already limits user input)
+  const MAX_CONTENT_LEN = 10000;
+  for (const m of messages) {
+    if (String(m.content || '').length > MAX_CONTENT_LEN) {
+      return res.status(400).json({ error: '消息内容过长' });
+    }
   }
 
   const insert = db.prepare(
@@ -319,11 +356,11 @@ router.post('/history', (req, res) => {
 });
 
 // GET /api/chat/history — load messages for a session (public, no auth)
-router.get('/history', (req, res) => {
+router.get('/history', historyLimiter, (req, res) => {
   const db = getDb();
-  const { session } = req.query;
+  const session = req.headers['x-session-id'];
 
-  if (!session) {
+  if (!session || !isUUID(session)) {
     return res.status(400).json({ error: '缺少 session 参数' });
   }
 

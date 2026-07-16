@@ -72,4 +72,16 @@ function initTables() {
   insertSetting.run('ai_system_prompt', '你是这个个人博客的AI助手。你可以根据提供的文章列表回答访客关于博客内容的问题。请用中文回答，保持友好、简洁的风格。如果访客问的问题与博客内容无关，礼貌地说明你主要帮助解答博客相关的问题。');
 }
 
-module.exports = { getDb };
+// Delete chat messages older than `keepDays` days. Returns count of deleted rows.
+function cleanOldMessages(keepDays = 30) {
+  if (!db) return 0;
+  const result = db.prepare(
+    "DELETE FROM chat_messages WHERE created_at < datetime('now', ?)"
+  ).run(`-${keepDays} days`);
+  if (result.changes > 0) {
+    console.log(`[db] cleaned ${result.changes} old chat messages`);
+  }
+  return result.changes;
+}
+
+module.exports = { getDb, cleanOldMessages };

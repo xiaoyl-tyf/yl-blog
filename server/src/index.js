@@ -7,6 +7,7 @@ const tagRoutes = require('./routes/tags');
 const settingRoutes = require('./routes/settings');
 const uploadRoutes = require('./routes/upload');
 const chatRoutes = require('./routes/chat');
+const { cleanOldMessages } = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -34,4 +35,8 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
+  // Clean messages older than 30 days on startup
+  cleanOldMessages(30);
+  // Then clean every 6 hours (ms)
+  setInterval(() => cleanOldMessages(30), 6 * 60 * 60 * 1000);
 });
