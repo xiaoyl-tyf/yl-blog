@@ -104,6 +104,44 @@ const suggestedQuestions = [
 
 const MAX_HISTORY = 20
 
+// ---- session persistence ----
+const SESSION_KEY = 'ai_chat_session_id'
+function getSessionId() {
+  let id = localStorage.getItem(SESSION_KEY)
+  if (!id) {
+    id = crypto.randomUUID()
+    localStorage.setItem(SESSION_KEY, id)
+  }
+  return id
+}
+const sessionId = getSessionId()
+
+async function loadHistory() {
+  try {
+    const res = await fetch(`/api/chat/history?session=${encodeURIComponent(sessionId)}`)
+    if (res.ok) {
+      const data = await res.json()
+      messages.value = data.messages.map(m => ({ role: m.role, content: m.content }))
+      await nextTick()
+      scrollToBottom()
+    }
+  } catch {
+    // Best-effort — chat works fine without history
+  }
+}
+
+async function saveMessages(msgs) {
+  try {
+    await fetch('/api/chat/history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, messages: msgs })
+    })
+  } catch {
+    // Silent fail — persistence is best-effort
+  }
+}
+
 function renderMarkdown(text) {
   if (!text) return ''
   return marked(text, { breaks: true })
@@ -113,6 +151,9 @@ onMounted(async () => {
   try {
     const settings = await api.getSettings()
     enabled.value = settings.ai_enabled === 'true'
+    if (enabled.value) {
+      await loadHistory()
+    }
   } catch {
     enabled.value = false
   }
@@ -162,6 +203,15 @@ async function handleSend() {
         animId = null
         loading.value = false
         scrollToBottom()
+        // Persist user+assistant exchange
+        const userMsg = messages.value[msgIdx - 1]
+        const astMsg = messages.value[msgIdx]
+        if (userMsg && astMsg && astMsg.content) {
+          saveMessages([
+            { role: userMsg.role, content: userMsg.content },
+            { role: astMsg.role, content: astMsg.content }
+          ])
+        }
       }
     }
     animId = requestAnimationFrame(tick)

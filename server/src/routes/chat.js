@@ -285,4 +285,53 @@ router.post('/', async (req, res) => {
   }
 });
 
+// POST /api/chat/history — save messages (public, no auth)
+router.post('/history', (req, res) => {
+  const db = getDb();
+  const { session_id, messages } = req.body;
+
+  if (!session_id || !Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ error: '缺少参数' });
+  }
+
+  const insert = db.prepare(
+    'INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)'
+  );
+
+  const insertMany = db.transaction((msgs) => {
+    let count = 0;
+    for (const m of msgs) {
+      if (m.role === 'user' || m.role === 'assistant') {
+        insert.run(session_id, m.role, String(m.content || ''));
+        count++;
+      }
+    }
+    return count;
+  });
+
+  try {
+    const count = insertMany(messages);
+    res.json({ saved: count });
+  } catch (err) {
+    console.error('[chat] history save error:', err);
+    res.status(500).json({ error: '保存失败' });
+  }
+});
+
+// GET /api/chat/history — load messages for a session (public, no auth)
+router.get('/history', (req, res) => {
+  const db = getDb();
+  const { session } = req.query;
+
+  if (!session) {
+    return res.status(400).json({ error: '缺少 session 参数' });
+  }
+
+  const messages = db.prepare(
+    'SELECT role, content FROM chat_messages WHERE session_id = ? ORDER BY created_at ASC LIMIT 200'
+  ).all(session);
+
+  res.json({ messages });
+});
+
 module.exports = router;
