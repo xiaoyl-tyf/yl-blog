@@ -121,4 +121,7 @@ export const api = {
   rebuildEmbeddings() {
     return request('/settings/rebuild-embeddings', { method: 'POST' })
   },
+  ragSearch(query, k = 3) {
+    return request(`/settings/rag-search?q=${encodeURIComponent(query)}&k=${k}`)
+  },
 }

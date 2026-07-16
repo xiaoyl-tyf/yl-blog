@@ -148,6 +148,46 @@
                     {{ rebuildResult.success > 0 ? `成功重建 ${rebuildResult.success} 篇文章的嵌入向量` : '重建失败，请检查 API 配置' }}
                   </p>
                 </div>
+
+                <!-- RAG search test -->
+                <div class="form-group">
+                  <label class="form-label">搜索测试</label>
+                  <div style="display:flex; gap:0.5rem;">
+                    <input v-model="ragTestQuery" type="text" class="form-input" placeholder="输入关键词测试检索效果..." style="flex:1; max-width:400px" @keyup.enter="handleRagSearch" />
+                    <button class="btn" @click="handleRagSearch" :disabled="ragSearching">
+                      <span v-if="ragSearching" class="loading-spinner"></span>
+                      搜索
+                    </button>
+                  </div>
+                  <div v-if="ragSearchResults" style="margin-top:1rem;">
+                    <p class="form-hint" style="margin-bottom:0.5rem">
+                      搜索 "{{ ragSearchResults.query }}" 返回 {{ ragSearchResults.results.length }} 条结果
+                      <template v-if="ragSearchResults.results.length > 0 && ragSearchResults.results[0].similarity <= 1 && ragSearchResults.results[0].similarity > 0">
+                        — 使用语义向量搜索
+                      </template>
+                      <template v-else-if="ragSearchResults.results.length > 0">
+                        — 使用关键词匹配
+                      </template>
+                    </p>
+                    <div v-if="ragSearchResults.results.length === 0" style="color:var(--text-muted); font-size:0.85rem;">
+                      未找到相关文章，请尝试其他关键词。
+                    </div>
+                    <div v-for="(r, i) in ragSearchResults.results" :key="r.id" style="padding:0.75rem; margin-bottom:0.5rem; background:var(--bg-hover); border-radius:8px">
+                      <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:0.25rem">
+                        <strong>#{{ i + 1 }} {{ r.title }}</strong>
+                        <span style="font-size:0.8rem; color:var(--text-muted); white-space:nowrap; margin-left:1rem">
+                          相关度: {{ (r.similarity * 100).toFixed(1) }}%
+                          <span v-if="r.similarity > 1" style="font-size:0.7rem"> (关键词命中)</span>
+                        </span>
+                      </div>
+                      <p style="margin:0; font-size:0.85rem; color:var(--text-secondary)">{{ r.excerpt || '暂无摘要' }}</p>
+                      <div style="margin-top:0.25rem; display:flex; gap:0.25rem; flex-wrap:wrap">
+                        <span v-for="t in r.tags" :key="t" class="tag-chip">{{ t }}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <p v-if="ragSearchError" class="form-feedback form-feedback--error">{{ ragSearchError }}</p>
+                </div>
               </div>
             </div>
           </div>
@@ -221,6 +261,11 @@ const aiRagTopK = ref('3')
 const aiRagMaxContentLen = ref('2000')
 const rebuilding = ref(false)
 const rebuildResult = ref(null)
+
+const ragTestQuery = ref('')
+const ragSearching = ref(false)
+const ragSearchResults = ref(null)
+const ragSearchError = ref('')
 
 const activeSection = ref('sec-site')
 const contentRef = ref(null)
@@ -297,6 +342,21 @@ async function handleRebuildEmbeddings() {
     rebuildResult.value = { success: 0, failed: 1, error: e.message }
   } finally {
     rebuilding.value = false
+  }
+}
+
+async function handleRagSearch() {
+  const q = ragTestQuery.value.trim()
+  if (!q) return
+  ragSearching.value = true
+  ragSearchError.value = ''
+  ragSearchResults.value = null
+  try {
+    ragSearchResults.value = await api.ragSearch(q, parseInt(aiRagTopK.value) || 3)
+  } catch (e) {
+    ragSearchError.value = e.message || '搜索失败'
+  } finally {
+    ragSearching.value = false
   }
 }
 
