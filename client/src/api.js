@@ -116,4 +116,9 @@ export const api = {
 
   // Chat with SSE streaming — returns a ReadableStream reader that the component reads
   // manually, so the component controls how fast to consume and render deltas
+
+  // RAG embeddings
+  rebuildEmbeddings() {
+    return request('/settings/rebuild-embeddings', { method: 'POST' })
+  },
 }

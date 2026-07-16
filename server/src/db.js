@@ -57,6 +57,14 @@ function initTables() {
       created_at TEXT DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS post_embeddings (
+      post_id INTEGER PRIMARY KEY,
+      embedding BLOB NOT NULL,
+      embedding_model TEXT NOT NULL DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+    );
   `);
 
   // Insert default settings
@@ -70,6 +78,9 @@ function initTables() {
   insertSetting.run('ai_api_key', '');
   insertSetting.run('ai_model', 'claude-opus-4-8');
   insertSetting.run('ai_system_prompt', '你是这个个人博客的AI助手。你可以根据提供的文章列表回答访客关于博客内容的问题。请用中文回答，保持友好、简洁的风格。如果访客问的问题与博客内容无关，礼貌地说明你主要帮助解答博客相关的问题。');
+  insertSetting.run('ai_rag_enabled', 'false');
+  insertSetting.run('ai_rag_top_k', '3');
+  insertSetting.run('ai_rag_max_content_length', '2000');
 }
 
 // Delete chat messages older than `keepDays` days. Returns count of deleted rows.

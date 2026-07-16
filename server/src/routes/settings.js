@@ -34,4 +34,16 @@ router.put('/', authMiddleware, (req, res) => {
   res.json({ message: '保存成功' });
 });
 
+// POST /api/settings/rebuild-embeddings — regenerate all post embeddings
+router.post('/rebuild-embeddings', authMiddleware, async (req, res) => {
+  try {
+    const { rebuildAllEmbeddings } = require('../rag');
+    const result = await rebuildAllEmbeddings();
+    res.json(result);
+  } catch (err) {
+    console.error('[rag] rebuild error:', err);
+    res.status(500).json({ error: '重建嵌入向量失败: ' + err.message });
+  }
+});
+
 module.exports = router;

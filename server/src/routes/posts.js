@@ -140,6 +140,12 @@ router.post('/', authMiddleware, (req, res) => {
   `).run(title, slug, excerpt || '', content, JSON.stringify(tags || []), cover_image || '', published ? 1 : 0);
 
   res.json({ id: result.lastInsertRowid, slug });
+
+  // Fire-and-forget: generate embedding for semantic search
+  const { storeEmbedding } = require('../rag');
+  storeEmbedding(result.lastInsertRowid).catch(err => {
+    console.error(`[rag] Failed to generate embedding for post ${result.lastInsertRowid}:`, err.message);
+  });
 });
 
 router.put('/:id', authMiddleware, (req, res) => {
@@ -155,6 +161,12 @@ router.put('/:id', authMiddleware, (req, res) => {
   );
 
   res.json({ message: '保存成功' });
+
+  // Fire-and-forget: regenerate embedding on update
+  const { storeEmbedding } = require('../rag');
+  storeEmbedding(req.params.id).catch(err => {
+    console.error(`[rag] Failed to generate embedding for post ${req.params.id}:`, err.message);
+  });
 });
 
 router.delete('/:id', authMiddleware, (req, res) => {

@@ -107,6 +107,49 @@
               <textarea v-model="aiSystemPrompt" class="form-textarea" rows="5" placeholder="自定义 AI 助手的行为..."></textarea>
               <p class="form-hint">系统提示词定义了 AI 的角色和行为方式，会与博客文章列表合并后一起发送给模型</p>
             </div>
+
+            <!-- RAG 语义搜索 -->
+            <div class="form-group" style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color)">
+              <label class="form-label">RAG 语义搜索</label>
+              <div class="form-inline" style="margin-bottom: 0.75rem">
+                <label class="toggle">
+                  <input type="checkbox" v-model="aiRagEnabled" true-value="true" false-value="false" />
+                  <span class="toggle__slider"></span>
+                </label>
+                <span class="form-inline__label">
+                  {{ aiRagEnabled === 'true' ? '已开启 — 根据访客问题智能检索相关文章（本地模型，无需 API）' : '已关闭 — 将全部文章摘要发给 AI' }}
+                </span>
+              </div>
+
+              <div v-if="aiRagEnabled === 'true'">
+                <div class="form-group">
+                  <label class="form-label">检索文章数量</label>
+                  <select v-model="aiRagTopK" class="form-select" style="max-width:200px">
+                    <option value="1">1 篇</option>
+                    <option value="3">3 篇（推荐）</option>
+                    <option value="5">5 篇</option>
+                  </select>
+                  <p class="form-hint">每次检索多少篇最相关的文章内容发给 AI。越多 token 消耗越大</p>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">单篇文章最大内容长度</label>
+                  <input v-model="aiRagMaxContentLen" type="number" class="form-input" style="max-width:160px" min="500" max="8000" step="100" />
+                  <span class="form-hint" style="margin-left:0.5rem">字符（500-8000，默认 2000）</span>
+                  <p class="form-hint">发送给 AI 的单篇文章内容上限，超出部分会截断并标注</p>
+                </div>
+
+                <div class="form-group">
+                  <button class="btn" @click="handleRebuildEmbeddings" :disabled="rebuilding">
+                    <span v-if="rebuilding" class="loading-spinner"></span>
+                    重建所有文章的嵌入向量
+                  </button>
+                  <p v-if="rebuildResult" class="form-feedback" :class="rebuildResult.success > 0 ? 'form-feedback--success' : 'form-feedback--error'">
+                    {{ rebuildResult.success > 0 ? `成功重建 ${rebuildResult.success} 篇文章的嵌入向量` : '重建失败，请检查 API 配置' }}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -173,6 +216,11 @@ const aiProvider = ref('anthropic')
 const aiApiKey = ref('')
 const aiModel = ref('claude-opus-4-8')
 const aiSystemPrompt = ref('')
+const aiRagEnabled = ref('false')
+const aiRagTopK = ref('3')
+const aiRagMaxContentLen = ref('2000')
+const rebuilding = ref(false)
+const rebuildResult = ref(null)
 
 const activeSection = ref('sec-site')
 const contentRef = ref(null)
@@ -205,6 +253,9 @@ async function handleSave() {
     await api.updateSetting('ai_api_key', aiApiKey.value)
     await api.updateSetting('ai_model', aiModel.value)
     await api.updateSetting('ai_system_prompt', aiSystemPrompt.value)
+    await api.updateSetting('ai_rag_enabled', aiRagEnabled.value)
+    await api.updateSetting('ai_rag_top_k', aiRagTopK.value)
+    await api.updateSetting('ai_rag_max_content_length', aiRagMaxContentLen.value)
     success.value = '所有设置已保存'
   } catch (e) {
     alert(e.message)
@@ -237,6 +288,18 @@ function scrollToSection(id) {
   }
 }
 
+async function handleRebuildEmbeddings() {
+  rebuilding.value = true
+  rebuildResult.value = null
+  try {
+    rebuildResult.value = await api.rebuildEmbeddings()
+  } catch (e) {
+    rebuildResult.value = { success: 0, failed: 1, error: e.message }
+  } finally {
+    rebuilding.value = false
+  }
+}
+
 function onScroll() {
   if (!contentRef.value) return
   const sections_ = contentRef.value.querySelectorAll('.admin-section')
@@ -258,6 +321,9 @@ onMounted(async () => {
     aiApiKey.value = settings.ai_api_key || ''
     aiModel.value = settings.ai_model || 'claude-opus-4-8'
     aiSystemPrompt.value = settings.ai_system_prompt || ''
+    aiRagEnabled.value = settings.ai_rag_enabled || 'false'
+    aiRagTopK.value = settings.ai_rag_top_k || '3'
+    aiRagMaxContentLen.value = settings.ai_rag_max_content_length || '2000'
     // Detect provider from model
     aiProvider.value = (settings.ai_model || '').startsWith('deepseek') ? 'deepseek' : 'anthropic'
   } catch {}
