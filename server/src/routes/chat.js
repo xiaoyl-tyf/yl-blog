@@ -1,8 +1,34 @@
 const express = require('express');
 const { getDb } = require('../db');
 const { ProxyAgent } = require('undici');
+const rateLimit = require('express-rate-limit');
+const { searchSimilarPosts } = require('../rag');
 
 const router = express.Router();
+
+// Rate limiters — applied per-route
+const chatLimiter = rateLimit({
+  windowMs: 60 * 1000,       // 1 minute
+  max: 10,                    // 10 AI requests per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: '请求过于频繁，请稍后再试' }
+});
+
+const historyLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,                    // 30 history reads/writes per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: '请求过于频繁，请稍后再试' }
+});
+
+// UUID v4 regex for session_id validation
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUUID(s) {
+  return typeof s === 'string' && UUID_RE.test(s);
+}
 
 // Optional proxy for AI API calls (only used when HTTP_PROXY env var is set)
 const proxyUrl = process.env.HTTP_PROXY || process.env.HTTPS_PROXY || process.env.http_proxy || process.env.https_proxy;
@@ -11,7 +37,7 @@ const dispatcher = proxyUrl
   : undefined;
 
 // POST /api/chat — public endpoint, no auth required
-router.post('/', async (req, res) => {
+router.post('/', chatLimiter, async (req, res) => {
   const db = getDb();
   const { message, history, stream } = req.body;
 
@@ -36,23 +62,59 @@ router.post('/', async (req, res) => {
   const model = settings.ai_model || 'claude-opus-4-8';
   const systemPrompt = settings.ai_system_prompt || '你是这个个人博客的AI助手。请用中文回答，保持友好、简洁的风格。';
 
-  // Fetch published posts for context
-  const posts = db.prepare(
-    'SELECT title, slug, excerpt, tags, created_at FROM posts WHERE published = 1 ORDER BY created_at DESC'
-  ).all();
+  // ---- RAG-based context retrieval ----
+  const ragEnabled = settings.ai_rag_enabled === 'true';
+  const ragTopK = Math.min(Math.max(parseInt(settings.ai_rag_top_k) || 3, 1), 10);
+  const ragMaxContentLen = Math.min(Math.max(parseInt(settings.ai_rag_max_content_length) || 2000, 500), 8000);
 
   let blogContext;
-  if (posts.length > 0) {
-    const postList = posts.map((p, i) => {
-      const date = p.created_at ? p.created_at.slice(0, 10) : '';
-      let tags = [];
-      try { tags = JSON.parse(p.tags); } catch {}
-      const tagStr = tags.length > 0 ? ` [${tags.join(', ')}]` : '';
-      return `${i + 1}. 《${p.title}》(${date})${tagStr}\n   ${p.excerpt || '暂无摘要'}`;
-    }).join('\n\n');
-    blogContext = `以下是这个博客的已发布文章列表：\n\n${postList}\n\n请根据以上文章内容回答访客的问题。如果访客问的问题涉及以上文章，请引用相关文章的标题。`;
+
+  if (ragEnabled) {
+    const relevantPosts = await searchSimilarPosts(message.trim(), ragTopK);
+
+    if (relevantPosts.length > 0) {
+      const postList = relevantPosts.map((p, i) => {
+        const date = p.created_at ? p.created_at.slice(0, 10) : '';
+        const tagStr = p.tags.length > 0 ? ` [${p.tags.join(', ')}]` : '';
+        const truncatedContent = (p.content || '').length > ragMaxContentLen
+          ? p.content.slice(0, ragMaxContentLen) + '\n\n…（内容已截断，查看全文请访问博客）'
+          : (p.content || '');
+        return [
+          `### ${i + 1}. 《${p.title}》(${date})${tagStr}`,
+          `> 摘要：${p.excerpt || '暂无摘要'}`,
+          '',
+          truncatedContent
+        ].join('\n');
+      }).join('\n\n---\n\n');
+
+      blogContext = [
+        `以下是博客中与访客问题语义最相关的 ${relevantPosts.length} 篇文章（含正文内容）：`,
+        '',
+        postList,
+        '',
+        '请根据以上文章内容回答访客的问题。引用文章标题时请使用《书名号》。如果访客问的问题与以上文章内容无关，可以礼貌说明，并尝试提供一般性帮助。'
+      ].join('\n');
+    } else {
+      blogContext = '这个博客目前还没有发布任何文章。';
+    }
   } else {
-    blogContext = '这个博客目前还没有发布任何文章。';
+    // Original behavior: list all published posts (excerpts only)
+    const posts = db.prepare(
+      'SELECT title, slug, excerpt, tags, created_at FROM posts WHERE published = 1 ORDER BY created_at DESC'
+    ).all();
+
+    if (posts.length > 0) {
+      const postList = posts.map((p, i) => {
+        const date = p.created_at ? p.created_at.slice(0, 10) : '';
+        let tags = [];
+        try { tags = JSON.parse(p.tags); } catch {}
+        const tagStr = tags.length > 0 ? ` [${tags.join(', ')}]` : '';
+        return `${i + 1}. 《${p.title}》(${date})${tagStr}\n   ${p.excerpt || '暂无摘要'}`;
+      }).join('\n\n');
+      blogContext = `以下是这个博客的已发布文章列表：\n\n${postList}\n\n请根据以上文章内容回答访客的问题。如果访客问的问题涉及以上文章，请引用相关文章的标题。`;
+    } else {
+      blogContext = '这个博客目前还没有发布任何文章。';
+    }
   }
 
   const fullSystemPrompt = `${systemPrompt}\n\n${blogContext}`;
@@ -286,12 +348,24 @@ router.post('/', async (req, res) => {
 });
 
 // POST /api/chat/history — save messages (public, no auth)
-router.post('/history', (req, res) => {
+router.post('/history', historyLimiter, (req, res) => {
   const db = getDb();
-  const { session_id, messages } = req.body;
+  const session_id = req.headers['x-session-id'];
+  const { messages } = req.body;
 
-  if (!session_id || !Array.isArray(messages) || messages.length === 0) {
+  if (!session_id || !isUUID(session_id)) {
     return res.status(400).json({ error: '缺少参数' });
+  }
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ error: '缺少参数' });
+  }
+
+  // Content length cap (defense in depth — frontend already limits user input)
+  const MAX_CONTENT_LEN = 10000;
+  for (const m of messages) {
+    if (String(m.content || '').length > MAX_CONTENT_LEN) {
+      return res.status(400).json({ error: '消息内容过长' });
+    }
   }
 
   const insert = db.prepare(
@@ -319,11 +393,11 @@ router.post('/history', (req, res) => {
 });
 
 // GET /api/chat/history — load messages for a session (public, no auth)
-router.get('/history', (req, res) => {
+router.get('/history', historyLimiter, (req, res) => {
   const db = getDb();
-  const { session } = req.query;
+  const session = req.headers['x-session-id'];
 
-  if (!session) {
+  if (!session || !isUUID(session)) {
     return res.status(400).json({ error: '缺少 session 参数' });
   }
 

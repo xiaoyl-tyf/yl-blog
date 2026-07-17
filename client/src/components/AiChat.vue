@@ -118,7 +118,9 @@ const sessionId = getSessionId()
 
 async function loadHistory() {
   try {
-    const res = await fetch(`/api/chat/history?session=${encodeURIComponent(sessionId)}`)
+    const res = await fetch('/api/chat/history', {
+      headers: { 'X-Session-Id': sessionId }
+    })
     if (res.ok) {
       const data = await res.json()
       messages.value = data.messages.map(m => ({ role: m.role, content: m.content }))
@@ -134,8 +136,11 @@ async function saveMessages(msgs) {
   try {
     await fetch('/api/chat/history', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_id: sessionId, messages: msgs })
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': sessionId
+      },
+      body: JSON.stringify({ messages: msgs })
     })
   } catch {
     // Silent fail — persistence is best-effort

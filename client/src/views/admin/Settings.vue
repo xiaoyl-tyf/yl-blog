@@ -1,13 +1,6 @@
 <template>
   <div>
-    <header class="admin-header">
-      <router-link to="/" class="admin-header__title">YL 管理后台</router-link>
-      <nav class="admin-header__nav">
-        <router-link :to="{ name: 'AdminPosts' }">文章</router-link>
-        <router-link :to="{ name: 'AdminSettings' }">设置</router-link>
-        <a href="#" @click.prevent="handleLogout">退出</a>
-      </nav>
-    </header>
+    <AdminHeader />
     <div class="admin-settings-layout">
       <!-- Sidebar TOC -->
       <aside class="admin-settings-sidebar">
@@ -107,6 +100,89 @@
               <textarea v-model="aiSystemPrompt" class="form-textarea" rows="5" placeholder="自定义 AI 助手的行为..."></textarea>
               <p class="form-hint">系统提示词定义了 AI 的角色和行为方式，会与博客文章列表合并后一起发送给模型</p>
             </div>
+
+            <!-- RAG 语义搜索 -->
+            <div class="form-group" style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border-color)">
+              <label class="form-label">RAG 语义搜索</label>
+              <div class="form-inline" style="margin-bottom: 0.75rem">
+                <label class="toggle">
+                  <input type="checkbox" v-model="aiRagEnabled" true-value="true" false-value="false" />
+                  <span class="toggle__slider"></span>
+                </label>
+                <span class="form-inline__label">
+                  {{ aiRagEnabled === 'true' ? '已开启 — 根据访客问题智能检索相关文章（本地模型，无需 API）' : '已关闭 — 将全部文章摘要发给 AI' }}
+                </span>
+              </div>
+
+              <div v-if="aiRagEnabled === 'true'">
+                <div class="form-group">
+                  <label class="form-label">检索文章数量</label>
+                  <select v-model="aiRagTopK" class="form-select" style="max-width:200px">
+                    <option value="1">1 篇</option>
+                    <option value="3">3 篇（推荐）</option>
+                    <option value="5">5 篇</option>
+                  </select>
+                  <p class="form-hint">每次检索多少篇最相关的文章内容发给 AI。越多 token 消耗越大</p>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">单篇文章最大内容长度</label>
+                  <input v-model="aiRagMaxContentLen" type="number" class="form-input" style="max-width:160px" min="500" max="8000" step="100" />
+                  <span class="form-hint" style="margin-left:0.5rem">字符（500-8000，默认 2000）</span>
+                  <p class="form-hint">发送给 AI 的单篇文章内容上限，超出部分会截断并标注</p>
+                </div>
+
+                <div class="form-group">
+                  <button class="btn" @click="handleRebuildEmbeddings" :disabled="rebuilding">
+                    <span v-if="rebuilding" class="loading-spinner"></span>
+                    重建所有文章的嵌入向量
+                  </button>
+                  <p v-if="rebuildResult" class="form-feedback" :class="rebuildResult.success > 0 ? 'form-feedback--success' : 'form-feedback--error'">
+                    {{ rebuildResult.success > 0 ? `成功重建 ${rebuildResult.success} 篇文章的嵌入向量` : '重建失败，请检查 API 配置' }}
+                  </p>
+                </div>
+
+                <!-- RAG search test -->
+                <div class="form-group">
+                  <label class="form-label">搜索测试</label>
+                  <div style="display:flex; gap:0.5rem;">
+                    <input v-model="ragTestQuery" type="text" class="form-input" placeholder="输入关键词测试检索效果..." style="flex:1; max-width:400px" @keyup.enter="handleRagSearch" />
+                    <button class="btn" @click="handleRagSearch" :disabled="ragSearching">
+                      <span v-if="ragSearching" class="loading-spinner"></span>
+                      搜索
+                    </button>
+                  </div>
+                  <div v-if="ragSearchResults" style="margin-top:1rem;">
+                    <p class="form-hint" style="margin-bottom:0.5rem">
+                      搜索 "{{ ragSearchResults.query }}" 返回 {{ ragSearchResults.results.length }} 条结果
+                      <template v-if="ragSearchResults.results.length > 0 && ragSearchResults.results[0].similarity <= 1 && ragSearchResults.results[0].similarity > 0">
+                        — 使用语义向量搜索
+                      </template>
+                      <template v-else-if="ragSearchResults.results.length > 0">
+                        — 使用关键词匹配
+                      </template>
+                    </p>
+                    <div v-if="ragSearchResults.results.length === 0" style="color:var(--text-muted); font-size:0.85rem;">
+                      未找到相关文章，请尝试其他关键词。
+                    </div>
+                    <div v-for="(r, i) in ragSearchResults.results" :key="r.id" style="padding:0.75rem; margin-bottom:0.5rem; background:var(--bg-hover); border-radius:8px">
+                      <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:0.25rem">
+                        <strong>#{{ i + 1 }} {{ r.title }}</strong>
+                        <span style="font-size:0.8rem; color:var(--text-muted); white-space:nowrap; margin-left:1rem">
+                          相关度: {{ (r.similarity * 100).toFixed(1) }}%
+                          <span v-if="r.similarity > 1" style="font-size:0.7rem"> (关键词命中)</span>
+                        </span>
+                      </div>
+                      <p style="margin:0; font-size:0.85rem; color:var(--text-secondary)">{{ r.excerpt || '暂无摘要' }}</p>
+                      <div style="margin-top:0.25rem; display:flex; gap:0.25rem; flex-wrap:wrap">
+                        <span v-for="t in r.tags" :key="t" class="tag-chip">{{ t }}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <p v-if="ragSearchError" class="form-feedback form-feedback--error">{{ ragSearchError }}</p>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -153,6 +229,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { marked } from 'marked'
+import AdminHeader from '@/components/AdminHeader.vue'
 import { api } from '@/api'
 
 const router = useRouter()
@@ -169,10 +246,27 @@ const pwError = ref('')
 const pwSuccess = ref('')
 
 const aiEnabled = ref('false')
-const aiProvider = ref('anthropic')
 const aiApiKey = ref('')
 const aiModel = ref('claude-opus-4-8')
 const aiSystemPrompt = ref('')
+const aiRagEnabled = ref('false')
+const aiRagTopK = ref('3')
+const aiRagMaxContentLen = ref('2000')
+const rebuilding = ref(false)
+const rebuildResult = ref(null)
+
+// aiProvider is derived from aiModel — setting it resets model to safe default
+const aiProvider = computed({
+  get: () => aiModel.value.startsWith('deepseek') ? 'deepseek' : 'anthropic',
+  set: (val) => {
+    aiModel.value = val === 'deepseek' ? 'deepseek-v4-flash' : 'claude-opus-4-8'
+  }
+})
+
+const ragTestQuery = ref('')
+const ragSearching = ref(false)
+const ragSearchResults = ref(null)
+const ragSearchError = ref('')
 
 const activeSection = ref('sec-site')
 const contentRef = ref(null)
@@ -188,12 +282,6 @@ const renderedAbout = computed(() => {
   return marked(aboutContent.value, { breaks: true })
 })
 
-function handleLogout() {
-  localStorage.removeItem('token')
-  localStorage.removeItem('user')
-  router.push({ name: 'AdminLogin' })
-}
-
 async function handleSave() {
   saving.value = true
   success.value = ''
@@ -205,6 +293,9 @@ async function handleSave() {
     await api.updateSetting('ai_api_key', aiApiKey.value)
     await api.updateSetting('ai_model', aiModel.value)
     await api.updateSetting('ai_system_prompt', aiSystemPrompt.value)
+    await api.updateSetting('ai_rag_enabled', aiRagEnabled.value)
+    await api.updateSetting('ai_rag_top_k', aiRagTopK.value)
+    await api.updateSetting('ai_rag_max_content_length', aiRagMaxContentLen.value)
     success.value = '所有设置已保存'
   } catch (e) {
     alert(e.message)
@@ -237,6 +328,33 @@ function scrollToSection(id) {
   }
 }
 
+async function handleRebuildEmbeddings() {
+  rebuilding.value = true
+  rebuildResult.value = null
+  try {
+    rebuildResult.value = await api.rebuildEmbeddings()
+  } catch (e) {
+    rebuildResult.value = { success: 0, failed: 1, error: e.message }
+  } finally {
+    rebuilding.value = false
+  }
+}
+
+async function handleRagSearch() {
+  const q = ragTestQuery.value.trim()
+  if (!q) return
+  ragSearching.value = true
+  ragSearchError.value = ''
+  ragSearchResults.value = null
+  try {
+    ragSearchResults.value = await api.ragSearch(q, parseInt(aiRagTopK.value) || 3)
+  } catch (e) {
+    ragSearchError.value = e.message || '搜索失败'
+  } finally {
+    ragSearching.value = false
+  }
+}
+
 function onScroll() {
   if (!contentRef.value) return
   const sections_ = contentRef.value.querySelectorAll('.admin-section')
@@ -258,8 +376,9 @@ onMounted(async () => {
     aiApiKey.value = settings.ai_api_key || ''
     aiModel.value = settings.ai_model || 'claude-opus-4-8'
     aiSystemPrompt.value = settings.ai_system_prompt || ''
-    // Detect provider from model
-    aiProvider.value = (settings.ai_model || '').startsWith('deepseek') ? 'deepseek' : 'anthropic'
+    aiRagEnabled.value = settings.ai_rag_enabled || 'false'
+    aiRagTopK.value = settings.ai_rag_top_k || '3'
+    aiRagMaxContentLen.value = settings.ai_rag_max_content_length || '2000'
   } catch {}
   if (contentRef.value) {
     contentRef.value.addEventListener('scroll', onScroll, { passive: true })

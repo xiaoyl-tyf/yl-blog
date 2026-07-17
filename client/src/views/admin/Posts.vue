@@ -1,13 +1,6 @@
 <template>
   <div>
-    <header class="admin-header">
-      <router-link to="/" class="admin-header__title">YL 管理后台</router-link>
-      <nav class="admin-header__nav">
-        <router-link :to="{ name: 'AdminPosts' }">文章</router-link>
-        <router-link :to="{ name: 'AdminSettings' }">设置</router-link>
-        <a href="#" @click.prevent="handleLogout">退出</a>
-      </nav>
-    </header>
+    <AdminHeader />
     <main class="admin-main">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-lg);">
         <h1 style="font-family: var(--font-display); font-size: 1.5rem;">文章管理</h1>
@@ -63,6 +56,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import AdminHeader from '@/components/AdminHeader.vue'
 import { api } from '@/api'
 
 const router = useRouter()
@@ -72,12 +66,6 @@ const loading = ref(true)
 function formatDate(dateStr) {
   const d = new Date(dateStr)
   return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
-}
-
-function handleLogout() {
-  localStorage.removeItem('token')
-  localStorage.removeItem('user')
-  router.push({ name: 'AdminLogin' })
 }
 
 async function handleDelete(post) {
