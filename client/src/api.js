@@ -124,4 +124,13 @@ export const api = {
   ragSearch(query, k = 3) {
     return request(`/settings/rag-search?q=${encodeURIComponent(query)}&k=${k}`)
   },
+  getRagStats() {
+    return request('/settings/rag-stats')
+  },
+  feedRawText(text) {
+    return request('/settings/rag-feed', {
+      method: 'POST',
+      body: JSON.stringify({ text })
+    })
+  },
 }

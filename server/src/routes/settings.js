@@ -74,4 +74,56 @@ router.get('/rag-search', authMiddleware, async (req, res) => {
   }
 });
 
+// GET /api/settings/rag-stats — embedding statistics (admin only)
+router.get('/rag-stats', authMiddleware, (req, res) => {
+  try {
+    const db = getDb();
+    const totalPosts = db.prepare('SELECT COUNT(*) as cnt FROM posts WHERE published = 1').get().cnt;
+    const withEmbeddings = db.prepare(
+      'SELECT COUNT(*) as cnt FROM post_embeddings pe JOIN posts p ON pe.post_id = p.id WHERE p.published = 1'
+    ).get().cnt;
+    const withoutEmbeddings = totalPosts - withEmbeddings;
+    const model = db.prepare('SELECT DISTINCT embedding_model FROM post_embeddings LIMIT 1').get();
+    const dims = db.prepare('SELECT embedding FROM post_embeddings LIMIT 1').get();
+    let vectorDims = 0;
+    if (dims) {
+      try { vectorDims = new Float32Array(dims.embedding.buffer).length; } catch {}
+    }
+    res.json({
+      totalPosts,
+      withEmbeddings,
+      withoutEmbeddings,
+      embeddingModel: model?.embedding_model || null,
+      vectorDimensions: vectorDims
+    });
+  } catch (err) {
+    console.error('[rag] stats error:', err);
+    res.status(500).json({ error: '读取统计信息失败' });
+  }
+});
+
+// POST /api/settings/rag-feed — manually feed raw text for embedding (admin only)
+router.post('/rag-feed', authMiddleware, async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text || !text.trim()) {
+      return res.status(400).json({ error: '请输入文本' });
+    }
+    const { generateEmbedding } = require('../rag');
+    const embedding = await generateEmbedding(text.trim(), false);
+    if (!embedding) {
+      return res.status(500).json({ error: '嵌入向量生成失败' });
+    }
+    const vec = Array.from(embedding).slice(0, 5).map(v => Math.round(v * 10000) / 10000);
+    res.json({
+      dimensions: embedding.length,
+      preview: vec,
+      model: 'Xenova/bge-m3'
+    });
+  } catch (err) {
+    console.error('[rag] feed error:', err);
+    res.status(500).json({ error: '生成嵌入向量失败: ' + err.message });
+  }
+});
+
 module.exports = router;

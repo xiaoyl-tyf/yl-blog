@@ -1,7 +1,7 @@
 /**
  * RAG (Retrieval-Augmented Generation) module for blog AI chat.
  *
- * Uses @xenova/transformers with all-MiniLM-L6-v2 to generate 384-dim
+ * Uses @xenova/transformers with bge-m3 to generate 1024-dim
  * semantic vectors locally (no API calls, fully offline after first download).
  * Vectors are stored as Float32 BLOBs in SQLite, and cosine-similarity
  * search is performed at query time to find the most relevant posts.
@@ -15,9 +15,13 @@
 const { getDb } = require('./db');
 
 // ---- config ----
-const MODEL_NAME = 'Xenova/all-MiniLM-L6-v2';
-const VECTOR_DIMS = 384;
-const MAX_EMBEDDING_CHARS = 2000; // all-MiniLM-L6-v2 works best up to ~128 tokens (~500 chars); cap conservatively
+const MODEL_NAME = 'Xenova/bge-m3';
+const VECTOR_DIMS = 1024;
+const MAX_EMBEDDING_CHARS = 8000; // bge-m3 supports up to 8192 tokens
+
+// BGE-M3 uses these prefixes for optimal retrieval
+const QUERY_PREFIX = 'Represent this sentence for searching relevant passages: ';
+const DOC_PREFIX = '';
 
 // ---- proxy-aware fetch for model download ----
 const { ProxyAgent } = require('undici');
@@ -73,16 +77,23 @@ function cosineSimilarity(a, b) {
 
 /**
  * Generate an embedding vector for a text string using the local model.
- * Returns a Float32Array (384-dim) or null on any failure.
+ * Returns a Float32Array (1024-dim) or null on any failure.
+ * Uses cls pooling for queries and document embeddings (bge-m3 default).
+ *
+ * @param {string} text - the input text
+ * @param {boolean} isQuery - if true, prepend query prefix; if false, document prefix
  */
-async function generateEmbedding(text) {
+async function generateEmbedding(text, isQuery = false) {
   if (!text) return null;
 
-  const input = text.slice(0, MAX_EMBEDDING_CHARS);
+  const prefixed = isQuery
+    ? QUERY_PREFIX + text.slice(0, MAX_EMBEDDING_CHARS)
+    : DOC_PREFIX + text.slice(0, MAX_EMBEDDING_CHARS);
 
   try {
     const model = await getEmbeddingModel();
-    const output = await model(input, { pooling: 'mean', normalize: true });
+    // bge-m3 uses cls pooling (not mean)
+    const output = await model(prefixed, { pooling: 'cls', normalize: true });
     return new Float32Array(output.data);
   } catch (err) {
     console.error('[rag] embedding generation error:', err.message);
@@ -116,7 +127,7 @@ async function storeEmbedding(postId) {
   if (!post) return false;
 
   const text = buildPostText(post);
-  const embedding = await generateEmbedding(text);
+  const embedding = await generateEmbedding(text, false);  // isQuery = false for documents
   if (!embedding) return false;
 
   const buf = Buffer.from(embedding.buffer);
@@ -186,7 +197,7 @@ async function searchSimilarPosts(query, topK = 3) {
   const db = getDb();
 
   // Attempt embedding-based search
-  const queryEmbedding = await generateEmbedding(query);
+  const queryEmbedding = await generateEmbedding(query, true);  // isQuery = true
   if (!queryEmbedding) return keywordSearch(query, topK);
 
   // Load all stored embeddings for published posts

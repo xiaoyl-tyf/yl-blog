@@ -43,6 +43,12 @@ const routes = [
     name: 'AdminSettings',
     component: () => import('@/views/admin/Settings.vue'),
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/admin/rag',
+    name: 'AdminRag',
+    component: () => import('@/views/admin/RagAdmin.vue'),
+    meta: { requiresAuth: true }
   }
 ]
 
