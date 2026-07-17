@@ -33,7 +33,7 @@ const dispatcher = proxyUrl
 // Patch global fetch so @xenova can download model files through proxy
 if (dispatcher) {
   const origFetch = globalThis.fetch;
-  globalThis.fetch = (url, opts) => origFetch(url, { ...opts, dispatcher });
+  globalThis.fetch = (url, opts) => origFetch(url, { dispatcher, ...opts });
 }
 
 // ---- lazy model singleton ----
@@ -53,7 +53,12 @@ async function getEmbeddingModel() {
     _embeddingModel = await pipeline('feature-extraction', MODEL_NAME);
     console.log('[rag] Model loaded in', Date.now() - t0, 'ms');
     return _embeddingModel;
-  })();
+  })().catch(err => {
+    console.error('[rag] Model loading failed:', err.message);
+    _modelLoading = false;
+    _modelLoadPromise = null;
+    throw err;
+  });
 
   return _modelLoadPromise;
 }
@@ -61,6 +66,7 @@ async function getEmbeddingModel() {
 // ---- helpers ----
 
 function cosineSimilarity(a, b) {
+  if (a.length !== b.length) return 0;
   let dotProduct = 0;
   let normA = 0;
   let normB = 0;
@@ -192,7 +198,7 @@ function keywordSearch(query, topK = 3) {
  *   - No embeddings exist in the database
  */
 async function searchSimilarPosts(query, topK = 3) {
-  if (!query) return keywordSearch(query, topK);
+  if (!query) return [];
 
   const db = getDb();
 
@@ -223,13 +229,13 @@ async function searchSimilarPosts(query, topK = 3) {
   scored.sort((a, b) => b.similarity - a.similarity);
   const topIds = scored.slice(0, topK).map(s => s.postId);
 
-  if (topIds.length === 0) return [];
+  if (topIds.length === 0) return keywordSearch(query, topK);
 
   // Fetch full post data for top matches
   const placeholders = topIds.map(() => '?').join(',');
   const posts = db.prepare(
     `SELECT id, title, slug, content, excerpt, tags, created_at
-     FROM posts WHERE id IN (${placeholders})`
+     FROM posts WHERE id IN (${placeholders}) AND published = 1`
   ).all(...topIds);
 
   // Attach similarity scores and preserve ranking order

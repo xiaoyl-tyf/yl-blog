@@ -64,8 +64,8 @@ router.post('/', chatLimiter, async (req, res) => {
 
   // ---- RAG-based context retrieval ----
   const ragEnabled = settings.ai_rag_enabled === 'true';
-  const ragTopK = parseInt(settings.ai_rag_top_k) || 3;
-  const ragMaxContentLen = parseInt(settings.ai_rag_max_content_length) || 2000;
+  const ragTopK = Math.min(Math.max(parseInt(settings.ai_rag_top_k) || 3, 1), 10);
+  const ragMaxContentLen = Math.min(Math.max(parseInt(settings.ai_rag_max_content_length) || 2000, 500), 8000);
 
   let blogContext;
 

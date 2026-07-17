@@ -1,14 +1,6 @@
 <template>
   <div>
-    <header class="admin-header">
-      <router-link to="/" class="admin-header__title">YL 管理后台</router-link>
-      <nav class="admin-header__nav">
-        <router-link :to="{ name: 'AdminPosts' }">文章</router-link>
-        <router-link :to="{ name: 'AdminSettings' }">设置</router-link>
-        <router-link :to="{ name: 'AdminRag' }">RAG</router-link>
-        <a href="#" @click.prevent="handleLogout">退出</a>
-      </nav>
-    </header>
+    <AdminHeader />
 
     <div class="admin-content" style="max-width:960px; margin:2rem auto; padding:0 1rem">
       <h1>RAG 语义搜索管理</h1>
@@ -16,6 +8,7 @@
       <!-- Stats -->
       <section class="rag-card">
         <h2 class="rag-card__title">嵌入向量概览</h2>
+        <p v-if="statsError" class="form-feedback form-feedback--error">{{ statsError }}</p>
         <div class="rag-stats">
           <div class="rag-stat">
             <span class="rag-stat__value">{{ stats.totalPosts ?? '...' }}</span>
@@ -172,12 +165,11 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import AdminHeader from '@/components/AdminHeader.vue'
 import { api } from '@/api'
 
-const router = useRouter()
-
 const stats = ref({})
+const statsError = ref('')
 const rebuilding = ref(false)
 const rebuildResult = ref(null)
 
@@ -197,16 +189,13 @@ const ragMaxLen = ref('2000')
 const savingParams = ref(false)
 const paramsSaved = ref(false)
 
-function handleLogout() {
-  localStorage.removeItem('token')
-  localStorage.removeItem('user')
-  router.push({ name: 'AdminLogin' })
-}
-
 async function loadStats() {
+  statsError.value = ''
   try {
     stats.value = await api.getRagStats()
-  } catch {}
+  } catch (e) {
+    statsError.value = e.message || '加载统计信息失败'
+  }
 }
 
 async function handleRebuild() {

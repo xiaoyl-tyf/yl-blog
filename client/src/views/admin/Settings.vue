@@ -1,13 +1,6 @@
 <template>
   <div>
-    <header class="admin-header">
-      <router-link to="/" class="admin-header__title">YL 管理后台</router-link>
-      <nav class="admin-header__nav">
-        <router-link :to="{ name: 'AdminPosts' }">文章</router-link>
-        <router-link :to="{ name: 'AdminSettings' }">设置</router-link>
-        <a href="#" @click.prevent="handleLogout">退出</a>
-      </nav>
-    </header>
+    <AdminHeader />
     <div class="admin-settings-layout">
       <!-- Sidebar TOC -->
       <aside class="admin-settings-sidebar">
@@ -236,6 +229,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { marked } from 'marked'
+import AdminHeader from '@/components/AdminHeader.vue'
 import { api } from '@/api'
 
 const router = useRouter()
@@ -252,7 +246,6 @@ const pwError = ref('')
 const pwSuccess = ref('')
 
 const aiEnabled = ref('false')
-const aiProvider = ref('anthropic')
 const aiApiKey = ref('')
 const aiModel = ref('claude-opus-4-8')
 const aiSystemPrompt = ref('')
@@ -261,6 +254,14 @@ const aiRagTopK = ref('3')
 const aiRagMaxContentLen = ref('2000')
 const rebuilding = ref(false)
 const rebuildResult = ref(null)
+
+// aiProvider is derived from aiModel — setting it resets model to safe default
+const aiProvider = computed({
+  get: () => aiModel.value.startsWith('deepseek') ? 'deepseek' : 'anthropic',
+  set: (val) => {
+    aiModel.value = val === 'deepseek' ? 'deepseek-v4-flash' : 'claude-opus-4-8'
+  }
+})
 
 const ragTestQuery = ref('')
 const ragSearching = ref(false)
@@ -280,12 +281,6 @@ const renderedAbout = computed(() => {
   if (!aboutContent.value) return ''
   return marked(aboutContent.value, { breaks: true })
 })
-
-function handleLogout() {
-  localStorage.removeItem('token')
-  localStorage.removeItem('user')
-  router.push({ name: 'AdminLogin' })
-}
 
 async function handleSave() {
   saving.value = true
@@ -384,8 +379,6 @@ onMounted(async () => {
     aiRagEnabled.value = settings.ai_rag_enabled || 'false'
     aiRagTopK.value = settings.ai_rag_top_k || '3'
     aiRagMaxContentLen.value = settings.ai_rag_max_content_length || '2000'
-    // Detect provider from model
-    aiProvider.value = (settings.ai_model || '').startsWith('deepseek') ? 'deepseek' : 'anthropic'
   } catch {}
   if (contentRef.value) {
     contentRef.value.addEventListener('scroll', onScroll, { passive: true })

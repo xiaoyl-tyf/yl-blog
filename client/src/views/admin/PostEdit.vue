@@ -1,13 +1,6 @@
 <template>
   <div>
-    <header class="admin-header">
-      <router-link to="/" class="admin-header__title">YL 管理后台</router-link>
-      <nav class="admin-header__nav">
-        <router-link :to="{ name: 'AdminPosts' }">文章</router-link>
-        <router-link :to="{ name: 'AdminSettings' }">设置</router-link>
-        <a href="#" @click.prevent="handleLogout">退出</a>
-      </nav>
-    </header>
+    <AdminHeader />
     <main class="admin-main">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-lg);">
         <h1 style="font-family: var(--font-display); font-size: 1.5rem;">
@@ -80,6 +73,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { marked } from 'marked'
+import AdminHeader from '@/components/AdminHeader.vue'
 import { api } from '@/api'
 
 const route = useRoute()
@@ -128,12 +122,6 @@ function insertMarkdown(before, after) {
     textarea.selectionStart = start + before.length
     textarea.selectionEnd = start + before.length + selected.length
   })
-}
-
-function handleLogout() {
-  localStorage.removeItem('token')
-  localStorage.removeItem('user')
-  router.push({ name: 'AdminLogin' })
 }
 
 async function handleSave(publish) {
